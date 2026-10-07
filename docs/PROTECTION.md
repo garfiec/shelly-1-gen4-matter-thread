@@ -20,6 +20,7 @@ This page explains how the firmware protects the load and the device, how it mea
 - [Resetting a trip](#resetting-a-trip)
 - [Seeing faults in Home Assistant](#seeing-faults-in-home-assistant)
 - [Power metering](#power-metering)
+- [Supply and loads](#supply-and-loads)
 - [Changing the limits](#changing-the-limits)
 - [What has not been verified](#what-has-not-been-verified)
 
@@ -35,6 +36,8 @@ This page explains how the firmware protects the load and the device, how it mea
 | No temperature sensor | All | No usable temperature reading | Turn-on refused | Automatic, when a reading returns |
 | Welded relay | 1PM Gen4 | 0.5 A or more flowing 5s after the relay was switched off | Alert only | Current stops, or the next On/Off |
 | Meter lost | 1PM Gen4 | No valid reading from the power meter for 5s | Alert only; the relay keeps working | Automatic |
+
+On a DC supply the meter can't measure, so overcurrent and overvoltage protection don't work there. See [Supply and loads](#supply-and-loads), which also covers inductive loads and the EU model.
 
 Every trip turns the relay off first and then reports it: the OnOff state in your controller changes to off, and a hardware fault is raised (see [Seeing faults in Home Assistant](#seeing-faults-in-home-assistant)). The status LED flashes rapidly (100ms on, 100ms off) while any fault is active. A turn-on that a protection refuses shows three quick flashes instead of switching; see [Button, Switch and LED](BUTTON-AND-LED.md).
 
@@ -146,6 +149,21 @@ All values are also refreshed once a minute. Home Assistant shows power, voltage
 **Energy total.** The running total is saved to flash every 15 minutes or every 100 Wh, whichever comes first, and continues across restarts and firmware updates. A power cut can lose up to 15 minutes or 100 Wh of the most recent energy. The total survives a factory reset. It is lost only if the device's storage has to be erased to recover from corruption, which also clears commissioning.
 
 **AC only.** The meter measures AC. The device advertises metering only once it has seen AC mains (80 V or more), and remembers that it has. A 1PM powered from DC never shows a meter that would read zero. If a device is first powered from DC and later from AC, the metering entities appear after the next restart, and Home Assistant may need to re-interview the device.
+
+---
+
+## Supply and loads
+
+Notes from Shelly's own specifications for the 1PM Gen4 ([Knowledge Base](https://kb.shelly.cloud/knowledge-base/shelly-1pm-gen4)) that affect how far the firmware can protect you.
+
+- **DC supply (24-30 V).** The device runs on DC, but the power meter measures AC only. On DC there is **no overcurrent and no overvoltage protection**, and no metering. Shelly rates the relay 10 A at 30 V DC: keep DC loads within that yourself. Over-temperature protection still works.
+- **Inductive loads.** Shelly lists LED drivers, transformers, fans and refrigerators as supported only with an RC snubber across the load. Switching them without one wears the relay contacts, and a welded contact is the one fault the firmware can only report, not stop ([Welded relay](#welded-relay-and-meter-alerts)).
+- **Resistive and capacitive loads** (heaters, incandescent lamps, electronics) need nothing extra.
+- **EU model (S4SW-001P16EU, 16 A / 240 V).** The defaults are for the UL model (15 A / 120 V). On the EU model:
+  - the overcurrent heat model starts at 16.5 A, which still runs a 16 A load but with little margin for meter error, so build with `CONFIG_SHELLY_PROT_RATED_CURRENT_MA=16000` (heat then builds above 17.6 A; see [Changing the limits](#changing-the-limits));
+  - the 264 V overvoltage limit already covers 230/240 V mains;
+  - the meter calibration was measured on one unit and may read differently on another model.
+- **Ambient temperature.** Shelly rates the device for -20 °C to 40 °C. A hot enclosure brings the board closer to the 90 °C over-temperature trip.
 
 ---
 

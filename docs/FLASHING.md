@@ -60,7 +60,8 @@ The 1PM firmware switches a metered 15 A load and has not run on hardware yet. I
 3. **eFuse check (read-only).** With the device in flash mode, run `espefuse.py --chip esp32c6 --port <PORT> summary` and confirm that `SPI_BOOT_CRYPT_CNT` is 0, `SECURE_BOOT_EN` is False and `DIS_DOWNLOAD_MODE` is False. This command only reads. If any of them is set, stop: the chip is locked down and a restore may not be possible.
 4. **Full UART backup.** For the 1PM, the [full 8MB backup](#2-back-up-the-original-shelly-firmware) is required, not optional, and verify it with `verify_flash`. It is your way back if the firmware does not suit your unit.
 5. **Install on mains, then commission.** The meter only appears once the device has seen AC mains. Bench power from the UART adapter is 3.3V DC, so a 1PM commissioned on the bench shows no power metering; after it is installed and restarted on mains the metering appears, and Home Assistant may need to re-interview the device. Commissioning after installation avoids that. On bench power the status LED may also flash very fast (100ms on, 100ms off) instead of the 200ms commissioning blink: that is the meter-lost alert, because the power meter has no mains to measure, and it clears on mains.
-6. **First boot on mains.** If you can watch the serial log, look for `Relay initialized on GPIO4`, `metering: AC present`, `protection: Mains nominal 120 V` and no `Fault raised` lines. See [Protection and Metering](PROTECTION.md) for what each fault means.
+6. **Model and load.** The defaults are for the UL model (15 A / 120 V). An EU unit (S4SW-001P16EU), a DC supply, or an inductive load without an RC snubber each change what the protection can do: see [Supply and loads](PROTECTION.md#supply-and-loads).
+7. **First boot on mains.** If you can watch the serial log, look for `Relay initialized on GPIO4`, `metering: AC present`, `protection: Mains nominal 120 V` and no `Fault raised` lines. See [Protection and Metering](PROTECTION.md) for what each fault means.
 
 ---
 
@@ -94,7 +95,7 @@ The fastest way to install this firmware is the Shelly web UI, over your network
 
 The USB-UART method is more involved. It needs a USB-UART adapter and a few minutes of wiring but it backs up the original firmware first and keeps the device fully reversible. Everything below, from wiring through flashing and restoring, is part of this method.
 
-The wiring, pinout, and photos in this section are the Shelly 1 Gen4's 7-pin programming header. The Shelly 1 Mini Gen4 exposes different programming pads, but the flash mode, backup, and esptool steps are the same once wired.
+The wiring, pinout, and photos in this section are the Shelly 1 Gen4's 7-pin programming header. The Shelly 1PM Gen4 has the same header with the same pin order (its [Knowledge Base page](https://kb.shelly.cloud/knowledge-base/shelly-1pm-gen4) shows it as the "Add-on interface"), so the same wiring applies. The Shelly 1 Mini Gen4 exposes different programming pads, but the flash mode, backup, and esptool steps are the same once wired.
 
 ---
 
@@ -113,8 +114,8 @@ The wiring, pinout, and photos in this section are the Shelly 1 Gen4's 7-pin pro
 
 > Full pinout and hardware overview: [Shelly 1 Gen4 Knowledge Base](https://kb.shelly.cloud/knowledge-base/shelly-1-gen4-anz)
 
-| CP2102 | Shelly 1 Gen4 |
-|--------|---------------|
+| CP2102 | Shelly 1 Gen4 / 1PM Gen4 |
+|--------|--------------------------|
 | N/A | Pin 1 (ESP_DBG_UART) |
 | RXD | Pin 2 (TXD) |
 | TXD | Pin 3 (RXD) |
@@ -122,6 +123,8 @@ The wiring, pinout, and photos in this section are the Shelly 1 Gen4's 7-pin pro
 | N/A | Pin 5 (RESET) |
 | N/A | Pin 6 (GPIO0 - BOOT)|
 | GND | Pin 7 (GND) |
+
+> Shelly's diagram labels pin 6 "GPIO0", a name carried over from its older ESP32 boards. On the ESP32-C6 in the Gen4 devices it is the boot pin (GPIO9); it is used the same way: bridge it to GND to enter flash mode.
 
 > The crossover is built into the table above: connect CP2102 RXD to Shelly TXD, and CP2102 TXD to Shelly RXD. If you're wiring this from the CP2102's "TX" and "RX" labels directly to the Shelly's "TX" and "RX" labels without crossing, it will not work.
 

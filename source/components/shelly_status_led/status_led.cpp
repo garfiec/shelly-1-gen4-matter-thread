@@ -43,9 +43,10 @@ static const char *TAG = "status_led";
 #define LED_TICK_MS         50  // Pattern resolution
 
 // Layers, highest priority first: hold hint > one-shot > identify > fault
-// > base. The task picks the top active layer each tick and restarts the
-// pattern's timing whenever the shown pattern changes, so a hold hint
-// starts on time rather than part-way through a blink.
+// > base, except that the Wi-Fi maintenance states outrank a fault. The
+// task picks the top active layer each tick and restarts the pattern's
+// timing whenever the shown pattern changes, so a hold hint starts on time
+// rather than part-way through a blink.
 static volatile led_state_t base_state = LED_STATE_OFF;
 static volatile bool identify_active = false;
 static volatile bool fault_active = false;
@@ -114,12 +115,17 @@ static void status_led_task(void *arg)
             want = oneshot;
         }
         if (want == LED_PAT_COUNT) {
+            // Wi-Fi maintenance mode shows over a fault: a faulted device (a
+            // 1PM on bench power, a latched trip) is the one most likely to
+            // need it, and the user must see that the mode is running.
+            led_state_t state = base_state;
+            bool wifi_mode = state == LED_STATE_MAINTENANCE || state == LED_STATE_UPLOADING;
             if (identify_active) {
                 want = LED_PAT_IDENTIFY;
-            } else if (fault_active) {
+            } else if (fault_active && !wifi_mode) {
                 want = LED_PAT_FAULT;
             } else {
-                want = base_pattern(base_state);
+                want = base_pattern(state);
             }
         }
 

@@ -22,13 +22,17 @@
 
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <nvs_flash.h>
 
 #include <log_heap_numbers.h>
+#include <relay.h>
 #include <status_led.h>
 
 #include <app/server/CommissioningWindowManager.h>
 #include <app/server/Server.h>
+#include <platform/PlatformManager.h>
 
 using namespace chip::app::Clusters;
 using namespace esp_matter;
@@ -249,11 +253,45 @@ esp_err_t shelly_app_identification_cb(identification::callback_type_t type, uin
     return ESP_OK;
 }
 
-static shelly_local_toggle_hook_t s_local_toggle_hook = nullptr;
+// attribute::update() takes the CHIP stack lock again inside a
+// ShellyInputLock: that nests only with lock tracking (ALREADY_TAKEN).
+#if !CHIP_STACK_LOCK_TRACKING_ENABLED
+#error "ShellyInputLock needs CHIP_STACK_LOCK_TRACKING_ENABLED"
+#endif
 
-void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook)
+ShellyInputLock::ShellyInputLock(uint32_t timeout_ms)
+{
+    chip::DeviceLayer::PlatformManager &platform = chip::DeviceLayer::PlatformMgr();
+    if (platform.IsChipStackLockedByCurrentThread()) {
+        m_locked = true;
+        return;
+    }
+    const TickType_t start = xTaskGetTickCount();
+    const TickType_t limit = pdMS_TO_TICKS(timeout_ms);
+    while (!platform.TryLockChipStack()) {
+        if (xTaskGetTickCount() - start >= limit) {
+            return;
+        }
+        vTaskDelay(1);
+    }
+    m_locked = true;
+    m_owned = true;
+}
+
+ShellyInputLock::~ShellyInputLock()
+{
+    if (m_owned) {
+        chip::DeviceLayer::PlatformMgr().UnlockChipStack();
+    }
+}
+
+static shelly_local_toggle_hook_t s_local_toggle_hook = nullptr;
+static shelly_local_toggle_done_t s_local_toggle_done = nullptr;
+
+void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook, shelly_local_toggle_done_t done)
 {
     s_local_toggle_hook = hook;
+    s_local_toggle_done = done;
 }
 
 bool shelly_onoff_toggle(uint16_t endpoint_id)
@@ -263,7 +301,11 @@ bool shelly_onoff_toggle(uint16_t endpoint_id)
     }
     // Read, hook and write under one lock, so a Matter command cannot
     // change the value between the read and the toggle.
-    lock::ScopedChipStackLock lock(portMAX_DELAY);
+    ShellyInputLock lock(SHELLY_INPUT_LOCK_TIMEOUT_MS);
+    if (!lock.locked()) {
+        ESP_LOGW(TAG, "Matter busy for %d ms: toggle refused", SHELLY_INPUT_LOCK_TIMEOUT_MS);
+        return false;
+    }
     attribute_t *attribute = attribute::get(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id);
     if (attribute == nullptr) {
         return false;
@@ -278,7 +320,24 @@ bool shelly_onoff_toggle(uint16_t endpoint_id)
     val.val.b = !val.val.b;
     // The PRE_UPDATE callback drives the relay; its refusal (thermal
     // lockout, protection) comes back here and leaves the attribute as is.
-    return attribute::update(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &val) == ESP_OK;
+    bool accepted = attribute::update(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &val) == ESP_OK;
+    if (s_local_toggle_done != nullptr) {
+        s_local_toggle_done(accepted);
+    }
+    return accepted;
+}
+
+bool shelly_local_relay_toggle(void)
+{
+    bool on = relay_get();
+    if (s_local_toggle_hook != nullptr) {
+        s_local_toggle_hook(on);
+    }
+    bool accepted = relay_set(!on) == ESP_OK;
+    if (s_local_toggle_done != nullptr) {
+        s_local_toggle_done(accepted);
+    }
+    return accepted;
 }
 
 void shelly_onoff_set(uint16_t endpoint_id, bool on)

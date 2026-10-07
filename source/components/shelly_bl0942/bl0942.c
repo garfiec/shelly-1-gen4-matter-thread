@@ -26,6 +26,7 @@
 #include <stdlib.h>
 
 #include <esp_log.h>
+#include <esp_rom_sys.h>
 #include <driver/gpio.h>
 #include <driver/uart.h>
 #include <freertos/FreeRTOS.h>
@@ -51,8 +52,9 @@ static esp_err_t write_reg(uint8_t reg, uint32_t value)
         return ESP_FAIL;
     }
     esp_err_t err = uart_wait_tx_done(BL0942_UART, pdMS_TO_TICKS(REG_TIMEOUT_MS));
-    // The chip needs a moment between commands.
-    vTaskDelay(pdMS_TO_TICKS(2));
+    // The chip needs a moment between commands. A busy wait: at the 100 Hz
+    // tick, vTaskDelay(pdMS_TO_TICKS(2)) is vTaskDelay(0), no wait at all.
+    esp_rom_delay_us(2000);
     return err;
 }
 

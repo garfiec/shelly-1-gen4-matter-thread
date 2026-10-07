@@ -44,7 +44,7 @@ Every trip turns the relay off first and then reports it: the OnOff state in you
 
 The Shelly 1PM Gen4 (UL) is rated 15 A. Loads briefly draw more than that: a motor or compressor starting, an incandescent lamp's cold filament, a power supply charging its capacitors. A trip at exactly 15 A would switch those loads off for no reason, so the firmware uses a heat model instead of an instantaneous limit, much like the thermal element of a breaker.
 
-**How it works.** The firmware reads the RMS current every 200ms. Below 16.5 A (110% of the rating, which covers a ±2% meter error with margin) nothing accumulates: a load at 15 A runs indefinitely. Above 16.5 A, heat builds in proportion to I² − 16.5², and the relay trips when the heat reaches 2800 A²s. Below 16.5 A the heat cools off with a 5-minute time constant.
+**How it works.** The firmware reads the RMS current every 200ms. Below 16.5 A (110% of the rating, which covers a ±2% meter error with margin) nothing accumulates: a load at 15 A runs indefinitely. Above 16.5 A, heat builds in proportion to I² − 16.5², and the relay trips when the heat reaches 2800 A²s. Below 16.5 A, and whenever the relay is off, the heat cools off with a 5-minute time constant.
 
 | Current | Time to trip |
 |---|---|
@@ -99,7 +99,8 @@ While over temperature, turn-on is refused. If no sensor gives a usable reading 
 
 ## Resetting a trip
 
-- **Overcurrent** is latched. Any of these clears it: an On command from a controller, a Toggle from off, a tap of the device button that turns it on (it acts when you let go), or a flip of the wall switch. Removing power clears it too. A software restart (a crash, a watchdog reset, a firmware update) does **not**: the latch survives in memory that keeps its contents across a restart, so a reboot can never re-energize a tripped load, even with Power-On Behavior set to On.
+- **In Wi-Fi maintenance mode** (see [Updating](UPDATING.md#wi-fi-maintenance-mode)) every protection still runs and trips the relay. An overvoltage trip is not restored automatically there: the relay stays off until you switch it, or until the device is back in normal mode and its power-on setting applies.
+- **Overcurrent** is latched. Any of these clears it: an On command from a controller (or an On with timed off or recall global scene that the outlet acts on as an On), a Toggle from off, or a tap of the device button or a flip of the wall switch that turns it on (a tap acts when you let go). An On the relay refuses, within the 2 s below or during overvoltage, leaves the trip latched, and so does a tap or flip refused for any reason. Removing power clears it too. A software restart (a crash, a watchdog reset, a firmware update) does **not**: the latch survives in memory that keeps its contents across a restart, so a reboot can never re-energize a tripped load, even with Power-On Behavior set to On.
 - **Overvoltage, over-temperature and sensor faults** clear themselves once the condition is gone.
 - **After any trip,** turn-on is refused for 2 seconds. This keeps a wall switch or an automation from chattering the relay against a fault that is still present.
 

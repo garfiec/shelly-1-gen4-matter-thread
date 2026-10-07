@@ -47,7 +47,8 @@ esp_err_t contact_sensor_init(void);
 // seed the endpoint's initial value at boot.
 bool contact_sensor_read_state(void);
 
-// Push the current contact state to the Boolean State cluster. Called on
-// each debounced edge, and once after Matter starts to publish the boot
-// state. Takes the CHIP stack lock internally.
+// Push the current contact state to the Boolean State cluster. Called by
+// the device UI for each debounced change once Matter is up (the
+// switch_handler), and once after Matter starts to publish the boot state.
+// Takes the CHIP stack lock internally.
 void contact_sensor_report(void);

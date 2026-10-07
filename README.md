@@ -9,7 +9,7 @@
 
 > **⚠️ Disclaimer.** Installing this firmware voids your Shelly warranty, and Shelly cannot provide technical support for a device running third-party code. It removes the factory keys that enable Shelly Cloud and official OTA updates. Treat flashing as one-way unless you keep the full-chip backup you make before flashing. Incorrect flashing can brick your device, so always back up your original firmware before proceeding if reversibility is important to you. You assume all responsibility for any damage, data loss, or device failure. This project is not affiliated with Shelly, Allterco Robotics, CSA, or Espressif Systems. See [Warranty, Factory Keys, and Reversibility](docs/REVERSIBILITY.md).
 
-The first third-party open source Matter over Thread firmware for Shelly Gen4 devices. It works natively with Apple Home, Google Home, Alexa, and Home Assistant. No Shelly app, no cloud, no WiFi. The Gen4 line's ESP-Shelly-C68F (ESP32-C6) has an 802.15.4 radio that stock firmware uses for Zigbee. Stock firmware also supports Matter over WiFi. This firmware reconfigures the 802.15.4 radio to run Thread, which unlocks Matter over Thread.
+The first third-party open source Matter over Thread firmware for Shelly Gen4 devices. It works natively with Apple Home, Google Home, Alexa, and Home Assistant. No Shelly app, no cloud, no WiFi (except an optional Wi-Fi maintenance mode for updates, which you start from the device's button). The Gen4 line's ESP-Shelly-C68F (ESP32-C6) has an 802.15.4 radio that stock firmware uses for Zigbee. Stock firmware also supports Matter over WiFi. This firmware reconfigures the 802.15.4 radio to run Thread, which unlocks Matter over Thread.
 
 <p align="center">
   <img src="docs/images/apple-home-device-info-v1.0.0.png" alt="Shelly 1 Gen4 running this firmware in Apple Home, showing manufacturer, model, and firmware version" width="300">
@@ -90,7 +90,8 @@ Once it is up and running, [updates are available](docs/UPDATING.md) through Hom
 
 - Shelly web UI install, with no UART adapter required (unless you want [reversibility](docs/REVERSIBILITY.md)).
 - Updates through Home Assistant with Matter OTA.
-- Onboard button with stock Shelly gestures: tap to toggle, press 3 times to pair, hold 10 s to factory reset, with LED feedback while you hold. See [Button, Switch and LED](docs/BUTTON-AND-LED.md).
+- Onboard button with stock Shelly gestures: tap to toggle, press 3 times to pair, hold 5 s for Wi-Fi maintenance mode, hold 10 s to factory reset, with LED feedback while you hold. See [Button, Switch and LED](docs/BUTTON-AND-LED.md).
+- Wi-Fi maintenance mode (experimental): hold the button 5 s and install an update from a phone, with no Home Assistant and no wires. See [Updating](docs/UPDATING.md#wi-fi-maintenance-mode).
 - External wall switch input on the SW terminal.
 - Configurable power-on behavior through the Matter StartUpOnOff attribute.
 - Status LED indication for BLE advertising, Thread connecting, and Thread connected.

@@ -32,8 +32,17 @@ CONFIG_BUTTON_PERIOD_TIME_MS=20
 # Gesture timing (taps, holds) is button_logic.h, not iot_button:
 # see docs/BUTTON-AND-LED.md.
 
-# disable softap by default
-CONFIG_ESP_WIFI_SOFTAP_SUPPORT=n
+# Wi-Fi access point, for maintenance mode only (shelly_maintenance). CHIP
+# stays Thread-only (CONFIG_ENABLE_WIFI_AP and _STATION are off). Wi-Fi runs
+# in a boot of its own, so its code stays out of IRAM, which normal mode
+# needs, and nothing it does is stored in NVS.
+CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_EXTRA_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
+CONFIG_ESP_WIFI_NVS_ENABLED=n
+CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
 
 # Enable OTA Requestor
 CONFIG_ENABLE_OTA_REQUESTOR=y

@@ -62,6 +62,27 @@ void shelly_app_started(void);
 // True once shelly_app_started() has run.
 bool shelly_app_is_started(void);
 
+// The CHIP stack lock for the input tasks (button, wall switch). It waits at
+// most timeout_ms, so a busy or wedged Matter thread refuses the input (the
+// caller shows LED-14) instead of freezing the task: locked() says which. A
+// lock this task already holds counts as locked. Only after Matter started.
+#define SHELLY_INPUT_LOCK_TIMEOUT_MS 2000
+
+class ShellyInputLock
+{
+public:
+    explicit ShellyInputLock(uint32_t timeout_ms);
+    ~ShellyInputLock();
+    bool locked() const { return m_locked; }
+
+    ShellyInputLock(const ShellyInputLock &) = delete;
+    ShellyInputLock &operator=(const ShellyInputLock &) = delete;
+
+private:
+    bool m_locked = false;
+    bool m_owned = false;
+};
+
 // Toggle or set the OnOff attribute on an endpoint. The attribute update
 // runs the normal PRE_UPDATE path, which drives the relay. No-op before
 // Matter starts or while endpoint_id is still 0. Takes the CHIP stack
@@ -69,17 +90,21 @@ bool shelly_app_is_started(void);
 //
 // shelly_onoff_toggle() is for local inputs (button, wall switch). It runs
 // the local-toggle hook, if one is set, with the value it is about to flip,
-// under the same lock as the read and the write.
+// under the same lock as the read and the write, and waits for that lock at
+// most SHELLY_INPUT_LOCK_TIMEOUT_MS.
 // Returns true if the OnOff attribute changed; false if the relay refused
-// (thermal lockout, protection) or Matter is not up yet.
+// (thermal lockout, protection), Matter is not up yet or stayed busy.
 bool shelly_onoff_toggle(uint16_t endpoint_id);
 void shelly_onoff_set(uint16_t endpoint_id, bool on);
 
-// Called by shelly_onoff_toggle() before every local toggle, with the
-// current OnOff value, while holding the CHIP stack lock. It must not
-// block. Set during boot, before Matter starts.
+// Called by shelly_onoff_toggle() around every local toggle, while holding
+// the CHIP stack lock, and by shelly_local_relay_toggle() in maintenance
+// mode, without it: hook before the write, with the current OnOff value,
+// and done after it, with whether the relay accepted the change. Neither
+// may block. Set during boot, before Matter starts.
 typedef void (*shelly_local_toggle_hook_t)(bool currently_on);
-void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook);
+typedef void (*shelly_local_toggle_done_t)(bool accepted);
+void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook, shelly_local_toggle_done_t done);
 
 // Set the OnOff attribute on the Matter thread, without waiting for the
 // CHIP stack lock. For protection code that must never block on Matter.
@@ -102,18 +127,57 @@ typedef struct {
     // runs its pulse).
     shelly_ui_toggle_fn_t toggle;
     // The same without Matter, for maintenance mode: the relay directly
-    // (the Opener pulses it). NULL where maintenance mode is not built.
+    // (the Opener pulses it).
     shelly_ui_toggle_fn_t local_toggle;
     // What the wall switch terminal does on this variant.
     ui_switch_role_t switch_role;
+    // The variant's own handling of a wall-switch change (UI_VARIANT): the
+    // Opener's contact report, the Light Switch's bound command. NULL for
+    // the toggle role.
+    void (*switch_handler)(void);
 } shelly_ui_config_t;
 
 // Start the button (button_init) with the device UI. Call during boot,
 // after the status LED and the relay. The config is copied.
 esp_err_t shelly_ui_init(const shelly_ui_config_t *config);
 
-// Toggle-role variants call this from their wall-switch callback.
+// Every variant calls this from its wall-switch callback (switch_input), so
+// ui_decide() decides what a change does in each state.
 void shelly_ui_switch_changed(void);
+
+// Toggle the relay directly, without Matter: the local toggle for Wi-Fi
+// maintenance mode. Runs the local-toggle hook first, like
+// shelly_onoff_toggle(). True if the relay accepted the change.
+bool shelly_local_relay_toggle(void);
+
+// ---------------------------------------------------------------------------
+// Wi-Fi maintenance mode (shelly_maintenance component)
+// ---------------------------------------------------------------------------
+
+// Record a request to restart into maintenance mode, with the current relay
+// state. The caller restarts. ESP_ERR_NOT_SUPPORTED without
+// CONFIG_SHELLY_MAINTENANCE.
+esp_err_t shelly_maintenance_request(void);
+
+// Call once in app_main, right after NVS and the status LED. True if this
+// boot is a maintenance boot: then run the maintenance mode
+// (shelly_maintenance_run) instead of starting Matter. The request is
+// consumed either way, so a crash in maintenance mode comes back normally.
+bool shelly_maintenance_boot_pending(bool *relay_was_on);
+
+// True during a maintenance boot.
+bool shelly_maintenance_active(void);
+
+// Record the relay state before a restart out of maintenance mode into
+// normal mode (the Exit button, the 5 s hold, the idle timeout, an update).
+void shelly_maintenance_exit_record(void);
+
+// Call in a normal boot once the relay's OnOff endpoint exists, before
+// esp_matter::start(). After a restart out of maintenance mode, it stores
+// the relay state recorded there as the OnOff value, so StartUpOnOff
+// applies to the state the relay really had (P-03) instead of the one from
+// before maintenance mode. The Opener, momentary, never calls it.
+void shelly_maintenance_carry_relay(uint16_t endpoint_id);
 
 // Internal: run by shelly_app_started(). Performs a factory reset that was
 // requested before Matter was up (see shelly_ui.cpp).

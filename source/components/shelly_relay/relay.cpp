@@ -137,10 +137,11 @@ void relay_trip(void)
         return;
     }
     xSemaphoreTake(s_lock, portMAX_DELAY);
-    ESP_LOGW(TAG, "Relay tripped");
     gpio_set_level(RELAY_GPIO, 0);
     s_level = false;
     xSemaphoreGive(s_lock);
+    // Logged after the pin is low: a busy console must not delay the trip.
+    ESP_LOGW(TAG, "Relay tripped");
 }
 
 bool relay_get(void)

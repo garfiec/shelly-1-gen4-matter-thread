@@ -20,6 +20,8 @@
 
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include <esp_matter.h>
 #include <app_priv.h>
@@ -36,14 +38,17 @@ static const char *TAG = "app_driver";
 extern uint16_t relay_endpoint_id;
 
 // Momentary pulse timer. On a trigger, arm a one-shot for OPENER_PULSE_MS,
-// then turn the relay back off by clearing the OnOff attribute (not via
-// relay_set, so the Matter-reported state returns to off too).
+// then release the relay and clear the OnOff attribute, so the
+// Matter-reported state returns to off too.
 static esp_timer_handle_t s_pulse_timer = nullptr;
 
 static void pulse_timer_cb(void *arg)
 {
-    esp_matter_attr_val_t val = esp_matter_bool(false);
-    attribute::update(relay_endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &val);
+    // Release the trigger here, on time: the attribute update waits for the
+    // CHIP stack lock, which the Matter thread can hold for seconds, and it
+    // runs on the Matter thread instead of blocking the esp_timer task.
+    relay_set(false);
+    shelly_onoff_set_async(relay_endpoint_id, false);
 }
 
 static esp_err_t pulse_timer_arm(void)
@@ -81,6 +86,13 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
                 // (thermal lockout), cancel the pending auto-off so it does not
                 // fire a stray off later. Prevents the fail-open reported in #11.
                 if (val->val.b) {
+                    // No trigger before Matter is up. A StartUpOnOff of On or
+                    // Toggle is applied inside esp_matter::start() through
+                    // this same write, and would move the door at every boot.
+                    if (!shelly_app_is_started()) {
+                        ESP_LOGW(TAG, "Trigger refused: Matter is not up yet");
+                        return ESP_ERR_INVALID_STATE;
+                    }
                     err = pulse_timer_arm();
                     if (err == ESP_OK) {
                         err = relay_set(true);
@@ -99,11 +111,63 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
     return err;
 }
 
+// The same pulse without Matter, for Wi-Fi maintenance mode: its own timer
+// turns the relay off directly. A tap during a pulse ends it. The button
+// task and the page's Toggle (the web server task) both call it, so it runs
+// under a lock.
+static esp_timer_handle_t s_local_pulse_timer = nullptr;
+static SemaphoreHandle_t s_local_pulse_lock = nullptr;
+static StaticSemaphore_t s_local_pulse_lock_buf;
+
+static void local_pulse_end(void *arg)
+{
+    relay_set(false);
+}
+
+esp_err_t app_driver_local_pulse_init(void)
+{
+    s_local_pulse_lock = xSemaphoreCreateMutexStatic(&s_local_pulse_lock_buf);
+    const esp_timer_create_args_t args = {
+        .callback = local_pulse_end,
+        .name = "opener_local_pulse",
+    };
+    esp_err_t err = esp_timer_create(&args, &s_local_pulse_timer);
+    if (err != ESP_OK) {
+        s_local_pulse_timer = nullptr;
+        ESP_LOGE(TAG, "Failed to create the local pulse timer: the trigger is refused");
+    }
+    return err;
+}
+
+bool app_driver_local_pulse(void)
+{
+    if (s_local_pulse_timer == nullptr) {
+        return false;
+    }
+    xSemaphoreTake(s_local_pulse_lock, portMAX_DELAY);
+    bool ok;
+    esp_timer_stop(s_local_pulse_timer);
+    if (relay_get()) {
+        ok = relay_set(false) == ESP_OK;
+    } else if (esp_timer_start_once(s_local_pulse_timer, (uint64_t)OPENER_PULSE_MS * 1000) != ESP_OK) {
+        // Arm the release first, as for a Matter trigger.
+        ok = false;
+    } else if (relay_set(true) != ESP_OK) {
+        esp_timer_stop(s_local_pulse_timer);
+        ok = false;
+    } else {
+        ok = true;
+    }
+    xSemaphoreGive(s_local_pulse_lock);
+    return ok;
+}
+
 esp_err_t app_driver_relay_set_defaults(uint16_t endpoint_id)
 {
-    // Momentary: the trigger is never asserted at boot. A stored or
-    // StartUpOnOff "on" would otherwise close the relay with no pulse
-    // timer armed to release it. Force the relay and the attribute off.
+    // Momentary: the trigger is never asserted at boot. A StartUpOnOff of
+    // On or Toggle is refused by app_driver_attribute_update() while Matter
+    // starts; a stored "on" (a restart mid-pulse) is cleared here. Force the
+    // relay and the attribute off.
     esp_err_t err = relay_set(false);
     shelly_onoff_set(endpoint_id, false);
 

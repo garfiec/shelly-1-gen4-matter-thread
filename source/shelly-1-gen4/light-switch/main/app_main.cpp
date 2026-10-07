@@ -33,6 +33,9 @@
 
 #include <app_priv.h>
 #include <shelly_app.h>
+#if CONFIG_SHELLY_MAINTENANCE
+#include <maintenance.h>
+#endif
 #include <status_led.h>
 #include <thermal.h>
 #include <switch_binding.h>
@@ -114,6 +117,24 @@ extern "C" void app_main()
     // Initialize status LED
     status_led_init();
 
+    // Wi-Fi maintenance mode (the button held 5 s) is a boot of its own:
+    // Matter and Thread are never started. See docs/BUTTON-AND-LED.md.
+#if CONFIG_SHELLY_MAINTENANCE
+    bool relay_was_on = false;
+    if (shelly_maintenance_boot_pending(&relay_was_on)) {
+        relay_init();
+        thermal_init();
+        shelly_ui_config_t maintenance_ui = {
+            .toggle = app_toggle,
+            .local_toggle = shelly_local_relay_toggle,
+            .switch_role = UI_SWITCH_BINDING,
+            .switch_handler = switch_binding_send,
+        };
+        shelly_ui_init(&maintenance_ui);
+        shelly_maintenance_run(relay_was_on, shelly_local_relay_toggle);
+    }
+#endif
+
     MEMORY_PROFILER_DUMP_HEAP_STAT("Bootup");
 
     // Initialize subsystems. Order matters for safety:
@@ -125,8 +146,9 @@ extern "C" void app_main()
     switch_binding_init();
     shelly_ui_config_t ui_config = {
         .toggle = app_toggle,
-        .local_toggle = nullptr,
+        .local_toggle = shelly_local_relay_toggle,
         .switch_role = UI_SWITCH_BINDING,
+        .switch_handler = switch_binding_send,
     };
     shelly_ui_init(&ui_config);
 
@@ -217,6 +239,10 @@ extern "C" void app_main()
     static_cast<ESP32FactoryDataProvider *>(dac_provider)->SetCertificationDeclaration(cdSpan);
 #endif
 #endif // CONFIG_ENABLE_SET_CERT_DECLARATION_API
+
+    // Back from Wi-Fi maintenance mode: its relay state is the previous
+    // state StartUpOnOff applies to (docs/BUTTON-AND-LED.md P-03).
+    shelly_maintenance_carry_relay(light_endpoint_id);
 
     // The diagnostics provider must be in place before Matter starts: the
     // GeneralDiagnostics boot event reads it at startup.

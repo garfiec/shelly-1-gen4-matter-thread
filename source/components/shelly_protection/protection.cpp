@@ -158,6 +158,15 @@ static void cooldown_start(int64_t now_us)
     portEXIT_CRITICAL(&s_cooldown_mux);
 }
 
+static bool cooldown_active(void)
+{
+    int64_t now_us = esp_timer_get_time();
+    portENTER_CRITICAL(&s_cooldown_mux);
+    bool cooling = now_us < s_cooldown_until_us;
+    portEXIT_CRITICAL(&s_cooldown_mux);
+    return cooling;
+}
+
 static const char *protection_gate(void)
 {
     if (s_latched) {
@@ -166,11 +175,7 @@ static const char *protection_gate(void)
     if (s_ov_active) {
         return "overvoltage";
     }
-    int64_t now_us = esp_timer_get_time();
-    portENTER_CRITICAL(&s_cooldown_mux);
-    bool cooling = now_us < s_cooldown_until_us;
-    portEXIT_CRITICAL(&s_cooldown_mux);
-    if (cooling) {
+    if (cooldown_active()) {
         return "post-trip cooldown";
     }
     return nullptr;
@@ -183,14 +188,23 @@ static void set_latched(bool latched)
     shelly_fault_set(SHELLY_FAULT_SRC_OVERCURRENT, latched);
 }
 
-// A deliberate On from the user clears a latched overcurrent trip. The
-// relay gate still enforces the cooldown and every other refusal.
+// A deliberate On from the user clears a latched overcurrent trip, but
+// only one the relay gate can accept: during overvoltage or the 2 s
+// cooldown the gate refuses the On anyway, and clearing the latch for it
+// would leave a tripped load that the next restart with StartUpOnOff On
+// re-energizes. (A local toggle that another gate refuses, such as
+// over-temperature, is re-latched by local_toggle_done().)
 static void user_on(void)
 {
-    if (s_latched) {
-        ESP_LOGW(TAG, "Deliberate On: clearing the overcurrent latch");
-        set_latched(false);
+    if (!s_latched) {
+        return;
     }
+    if (s_ov_active || cooldown_active()) {
+        ESP_LOGW(TAG, "On refused by the gate: the overcurrent latch stays");
+        return;
+    }
+    ESP_LOGW(TAG, "Deliberate On: clearing the overcurrent latch");
+    set_latched(false);
 }
 
 // Any deliberate switching during an overvoltage trip overrides the
@@ -203,14 +217,32 @@ static void user_switched(void)
     }
 }
 
+static bool onoff_read(uint32_t attribute_id, esp_matter_attr_val_t *val)
+{
+    attribute_t *attribute = attribute::get(s_endpoint_id, OnOff::Id, attribute_id);
+    return attribute != nullptr && attribute::get_val(attribute, val) == ESP_OK;
+}
+
 static bool onoff_is_on(void)
 {
-    attribute_t *attribute = attribute::get(s_endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id);
     esp_matter_attr_val_t val = esp_matter_invalid(nullptr);
-    if (attribute == nullptr || attribute::get_val(attribute, &val) != ESP_OK) {
-        return relay_get();
-    }
-    return val.val.b;
+    return onoff_read(OnOff::Attributes::OnOff::Id, &val) ? val.val.b : relay_get();
+}
+
+// The OnOff server discards OnWithRecallGlobalScene while GlobalSceneControl
+// is TRUE, which any earlier On leaves it. Unknown counts as TRUE.
+static bool global_scene_control(void)
+{
+    esp_matter_attr_val_t val = esp_matter_invalid(nullptr);
+    return !onoff_read(OnOff::Attributes::GlobalSceneControl::Id, &val) || val.val.b;
+}
+
+// While off with OffWaitTime above 0 (the delayed-off guard after a timed
+// On), the server answers OnWithTimedOff by shortening that guard only.
+static bool off_wait_pending(void)
+{
+    esp_matter_attr_val_t val = esp_matter_invalid(nullptr);
+    return onoff_read(OnOff::Attributes::OffWaitTime::Id, &val) && val.val.u16 > 0;
 }
 
 // Runs on the Matter thread BEFORE the standard OnOff command handler.
@@ -222,20 +254,32 @@ static esp_err_t onoff_command_cb(const ConcreteCommandPath &command_path, TLVRe
     if (command_path.mEndpointId != s_endpoint_id || command_path.mClusterId != OnOff::Id) {
         return ESP_OK;
     }
+    // Only a command the OnOff server will act on as an On is a deliberate
+    // On. The server discards the ones below without turning anything on,
+    // and clearing the latch for them would leave a tripped load that the
+    // next restart with StartUpOnOff On re-energizes.
     switch (command_path.mCommandId) {
     case OnOff::Commands::OnWithTimedOff::Id: {
-        // With AcceptOnlyWhenOn and the outlet off, the command only extends
-        // an on-timer and turns nothing on: it is not a deliberate On.
+        // Not an On: a command that does not decode (the server drops it),
+        // AcceptOnlyWhenOn while off (it only extends an on-timer), or any
+        // while off in the delayed-off guard (it only shortens the guard).
         OnOff::Commands::OnWithTimedOff::DecodableType command;
-        if (command.Decode(tlv_data) == CHIP_NO_ERROR &&
-            command.onOffControl.Has(OnOff::OnOffControlBitmap::kAcceptOnlyWhenOn) && !onoff_is_on()) {
+        if (command.Decode(tlv_data) != CHIP_NO_ERROR) {
+            break;
+        }
+        bool on = onoff_is_on();
+        if (!on && (command.onOffControl.Has(OnOff::OnOffControlBitmap::kAcceptOnlyWhenOn) || off_wait_pending())) {
             break;
         }
         user_on();
         break;
     }
-    case OnOff::Commands::On::Id:
     case OnOff::Commands::OnWithRecallGlobalScene::Id:
+        if (!global_scene_control()) {
+            user_on();
+        }
+        break;
+    case OnOff::Commands::On::Id:
         user_on();
         break;
     case OnOff::Commands::Toggle::Id:
@@ -254,15 +298,31 @@ static esp_err_t onoff_command_cb(const ConcreteCommandPath &command_path, TLVRe
     return ESP_OK;
 }
 
-// The local-toggle hook: shelly_onoff_toggle() runs it for every button
-// press and wall-switch flip, under the CHIP stack lock, with the value it
-// is about to flip.
+// The local-toggle hooks: shelly_onoff_toggle() runs them around every
+// button press and wall-switch flip, under the CHIP stack lock. A toggle
+// from off clears the latch first, so the relay gate can let it through.
+// If the relay refuses it anyway (the 2 s cooldown, over-temperature,
+// overvoltage), the latch comes back: only a tap or flip that turns the
+// outlet on clears it (docs/PROTECTION.md).
+static bool s_unlatched_by_toggle = false;
+
 static void local_toggle_hook(bool currently_on)
 {
     user_switched();
+    bool was_latched = s_latched;
     if (!currently_on) {
         user_on();
     }
+    s_unlatched_by_toggle = was_latched && !s_latched;
+}
+
+static void local_toggle_done(bool accepted)
+{
+    if (s_unlatched_by_toggle && !accepted) {
+        ESP_LOGW(TAG, "Turn-on refused: the overcurrent latch stays");
+        set_latched(true);
+    }
+    s_unlatched_by_toggle = false;
 }
 
 bool protection_is_latched(void)
@@ -288,8 +348,13 @@ esp_err_t protection_attach_endpoint(uint16_t relay_endpoint_id)
             command::set_user_callback(command, onoff_command_cb);
         }
     }
-    shelly_onoff_set_local_toggle_hook(local_toggle_hook);
+    protection_attach_local_inputs();
     return ESP_OK;
+}
+
+void protection_attach_local_inputs(void)
+{
+    shelly_onoff_set_local_toggle_hook(local_toggle_hook, local_toggle_done);
 }
 
 // ---------------------------------------------------------------------------
@@ -420,10 +485,16 @@ void protection_feed(const protection_sample_t *sample)
         amps = CURRENT_FULL_SCALE_A;
     }
 
-    // Overcurrent.
-    bool over = i2t_update(&s_i2t, amps, dt_s);
+    // Overcurrent. Heat builds only while the relay is closed: once a trip
+    // opens it, the meter's RMS registers still read the pre-trip current
+    // for up to one 800 ms refresh, and counting that would push the heat
+    // past the trip level for up to a minute, so an On long after the 2 s
+    // cooldown would re-trip at the next poll whatever the load draws. For
+    // the same reason the heat is capped at the trip level when it trips.
+    bool over = i2t_update(&s_i2t, relay_get() ? amps : 0.0f, dt_s);
     if (over && !s_latched) {
         trip_overcurrent(amps, now_us);
+        s_i2t.heat_a2s = I2T_K_A2S;
     }
     if (amps > PICKUP_A && !s_overcurrent_logged) {
         ESP_LOGW(TAG, "Current %.1f A above %.1f A pickup: trip in %.0fs at this level", amps, PICKUP_A,

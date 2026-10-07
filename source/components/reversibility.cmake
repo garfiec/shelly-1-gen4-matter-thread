@@ -17,8 +17,11 @@
 # burning option, a non-stock partition table, or a linked eFuse write.
 # See docs/REVERSIBILITY.md and scripts/check-reversibility.py.
 
-foreach(opt CONFIG_SECURE_BOOT CONFIG_SECURE_FLASH_ENC_ENABLED CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK
-            CONFIG_SECURE_DISABLE_ROM_DL_MODE CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE)
+# The same list as FORBIDDEN_CONFIG in scripts/check-reversibility.py, which
+# checks it again after the build: keep the two in step.
+foreach(opt CONFIG_SECURE_BOOT CONFIG_SECURE_BOOT_V2_ENABLED CONFIG_SECURE_FLASH_ENC_ENABLED
+            CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK CONFIG_SECURE_DISABLE_ROM_DL_MODE
+            CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE CONFIG_EFUSE_VIRTUAL)
     if(${opt})
         message(FATAL_ERROR "${opt} is enabled. It burns eFuses or blocks a UART restore, "
                             "so the device could not go back to stock. See docs/REVERSIBILITY.md.")
@@ -34,8 +37,12 @@ add_custom_target(reversibility_check ALL
     COMMENT "Checking reversibility (eFuses, secure boot, partition layout)"
     VERBATIM)
 add_dependencies(reversibility_check app bootloader)
-# `idf.py flash` builds the flash targets, not ALL: flash only what passed.
-foreach(shelly_flash_target flash app-flash)
+# `idf.py flash` and the partial flash targets build their own targets, not
+# ALL: every target that writes the app, the bootloader or the partition
+# table flashes only what passed.
+foreach(shelly_flash_target flash app-flash bootloader-flash partition-table-flash
+                            encrypted-flash encrypted-app-flash encrypted-bootloader-flash
+                            encrypted-partition-table-flash)
     if(TARGET ${shelly_flash_target})
         add_dependencies(${shelly_flash_target} reversibility_check)
     endif()

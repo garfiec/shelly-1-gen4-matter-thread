@@ -53,7 +53,9 @@ typedef enum {
 esp_err_t status_led_init(void);
 
 // Change the base LED state. Safe to call from any task.
-// Priority, highest first: hold hint > one-shot flash > Identify > fault > base.
+// Priority, highest first: hold hint > one-shot flash > Identify > fault >
+// base, except that the maintenance states (MAINTENANCE, UPLOADING) show
+// over a fault.
 void status_led_set_state(led_state_t state);
 
 // Enter Identify mode.
@@ -63,7 +65,7 @@ void status_led_start_identify(void);
 void status_led_stop_identify(void);
 
 // Show (true) or clear (false) the fault pattern. A fault overrides the
-// base state but not Identify.
+// base state (apart from Wi-Fi maintenance mode) but not Identify.
 void status_led_set_fault(bool active);
 
 // Show the button hold hint, or LED_HINT_NONE to clear it.

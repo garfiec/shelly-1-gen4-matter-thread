@@ -26,6 +26,7 @@
 #include <esp_log.h>
 #include <esp_matter.h>
 
+#include <shelly_app.h>
 #include <switch_input.h>
 
 // BooleanState StateValue is read-only / internally managed, so it must be
@@ -73,8 +74,15 @@ void switch_binding_report(void)
     ESP_LOGI(TAG, "Switch position updated: %s", state_value ? "ON" : "OFF");
 }
 
-// Runs on the switch_input task after each debounced change of level.
+// Runs on the switch_input task after each debounced change of level. The
+// device UI decides whether it acts: not before Matter is up, when the
+// binding manager and the CHIP stack lock do not exist yet.
 static void switch_binding_changed(bool level, void *arg)
+{
+    shelly_ui_switch_changed();
+}
+
+void switch_binding_send(void)
 {
     ESP_LOGI(TAG, "SW input changed. Sending Toggle command");
     client::request_handle_t req_handle;

@@ -17,7 +17,7 @@ The button, the wall switch (SW) and the status LED are the device's only local 
 - `source/components/shelly_app_common/ui_policy.c` (what each input does in each state, B-xx and SW-xx) and `shelly_ui.cpp` (carrying it out)
 - The LED and commissioning-window handling in `source/components/shelly_app_common/app_common.cpp` (`shelly_led_refresh`)
 - `source/components/shelly_switch_input/` and `source/components/shelly_maintenance/`
-- Each variant's `main/app_main.cpp` UI wiring (`shelly_ui_config_t`: toggle, local toggle, switch role)
+- Each variant's `main/app_main.cpp` UI wiring (`shelly_ui_config_t`: toggle, local toggle, switch role, switch handler), and the wall-switch callbacks that hand every change to `shelly_ui_switch_changed()` (the Opener's `contact_sensor.cpp`, the Light Switch's `switch_binding.cpp`)
 
 **When you design or change a UI behavior, walk the whole matrix so no mode is left out:**
 - **Inputs:** tap, 2 taps, 3 or more taps, hold released at 1-5 s, 5-10 s, 10-20 s, and 20 s or more; wall switch change; power-on.

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shelly maintenance</title>
+<style>
+:root { --bg: #f6f6f4; --card: #fff; --fg: #1d1d1b; --muted: #6b6b66; --line: #deded8; --accent: #1f6feb; --bad: #c62828; --good: #2e7d32; }
+@media (prefers-color-scheme: dark) { :root { --bg: #151514; --card: #1f1f1d; --fg: #ececea; --muted: #a0a09a; --line: #34342f; --accent: #5b9bff; --bad: #ff6b6b; --good: #6fcf73; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 32rem; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.3rem; margin: 8px 0 4px; }
+p.lead { color: var(--muted); margin: 0 0 16px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+h2 { font-size: 1rem; margin: 0 0 10px; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 8px; padding: 9px 14px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+input[type=file] { width: 100%; margin: 4px 0 10px; }
+label.check { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); margin-bottom: 12px; }
+progress { width: 100%; height: 10px; margin-top: 10px; }
+.msg { margin-top: 10px; }
+.msg.bad { color: var(--bad); }
+.msg.good { color: var(--good); }
+.row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+</style>
+</head>
+<body>
+<main>
+<h1>Shelly maintenance mode</h1>
+<p class="lead">Matter and Thread are off while this page is in use. The device returns to normal after an update, when you exit, or after 10 minutes with this page closed.</p>
+
+<section>
+<h2>Device</h2>
+<dl>
+<dt>Model</dt><dd id="hw">…</dd>
+<dt>Variant</dt><dd id="variant">…</dd>
+<dt>Firmware</dt><dd id="version">…</dd>
+<dt>MAC</dt><dd id="mac">…</dd>
+</dl>
+</section>
+
+<section>
+<div class="row">
+<div><h2 style="margin:0">Relay</h2><span id="relay">…</span></div>
+<button id="toggle">Toggle</button>
+</div>
+<div id="relaymsg" class="msg"></div>
+</section>
+
+<section>
+<h2>Update firmware</h2>
+<p style="margin:0 0 8px;color:var(--muted)">Choose the <b>.ota</b> file for this device, the same file used for Matter updates.</p>
+<input type="file" id="file" accept=".ota">
+<label class="check"><input type="checkbox" id="older"> Allow installing an older version</label>
+<button class="primary" id="upload" disabled>Install</button>
+<progress id="prog" max="100" value="0" hidden></progress>
+<div id="upmsg" class="msg"></div>
+</section>
+
+<section>
+<div class="row">
+<span style="color:var(--muted)">Back to normal operation</span>
+<button id="exit">Exit</button>
+</div>
+</section>
+</main>
+<script>
+var $ = function (id) { return document.getElementById(id); };
+var busy = false;
+function msg(el, text, kind) { el.textContent = text; el.className = 'msg' + (kind ? ' ' + kind : ''); }
+function refresh() {
+  if (busy) return;
+  fetch('/status', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (s) {
+    $('hw').textContent = s.hw; $('variant').textContent = s.variant; $('version').textContent = s.version;
+    $('mac').textContent = s.mac; $('relay').textContent = s.relay ? 'On' : 'Off';
+  }).catch(function () {});
+}
+setInterval(refresh, 2000); refresh();
+$('file').onchange = function () { $('upload').disabled = !$('file').files.length; msg($('upmsg'), ''); };
+$('toggle').onclick = function () {
+  fetch('/toggle', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (j) {
+    msg($('relaymsg'), j.ok ? '' : j.msg, j.ok ? '' : 'bad'); refresh();
+  }).catch(function () { msg($('relaymsg'), 'No response from the device', 'bad'); });
+};
+$('exit').onclick = function () {
+  fetch('/exit', { method: 'POST' }).finally(function () {
+    document.body.innerHTML = '<main><h1>Restarting</h1><p class="lead">The device is going back to normal operation. You can close this page.</p></main>';
+  });
+};
+$('upload').onclick = function () {
+  var f = $('file').files[0]; if (!f) return;
+  busy = true; $('upload').disabled = true; $('prog').hidden = false; $('prog').value = 0;
+  msg($('upmsg'), 'Uploading ' + f.name + '…');
+  var x = new XMLHttpRequest();
+  x.open('POST', '/update' + ($('older').checked ? '?allow_older=1' : ''));
+  x.upload.onprogress = function (e) { if (e.lengthComputable) $('prog').value = Math.round(100 * e.loaded / e.total); };
+  x.onload = function () {
+    var j; try { j = JSON.parse(x.responseText); } catch (e) { j = { ok: false, msg: 'Unexpected reply from the device' }; }
+    busy = false;
+    if (j.ok) { $('prog').value = 100; msg($('upmsg'), j.msg, 'good'); }
+    else { $('upload').disabled = false; $('prog').hidden = true; msg($('upmsg'), j.msg, 'bad'); }
+  };
+  x.onerror = function () { busy = false; $('upload').disabled = false; msg($('upmsg'), 'The upload was interrupted. Nothing was installed.', 'bad'); };
+  x.send(f);
+};
+</script>
+</body>
+</html>

@@ -67,11 +67,19 @@ source/
 
 Each variant is a self-contained ESP-IDF project that also pulls in the shared components from `source/components/`. A variant's pins and board options live in the "Shelly board" menu of its `main/Kconfig.projbuild`. Build commands run from inside the variant directory.
 
-The pure logic in the shared components (the power meter protocol, energy accounting, protection and thermal state machines) has host tests that need only a C compiler, not the container:
+The pure logic in the shared components has host tests that need only a C compiler and python3, not the container. It covers:
+- the power meter protocol, energy accounting, and the protection and thermal state machines;
+- the button gestures and what each input does in each state;
+- the LED patterns;
+- Wi-Fi maintenance mode's upload check and captive-portal DNS.
 
 ```bash
 source/components/test_host/run.sh
 ```
+
+The same script runs `scripts/check-ui-spec.py`, which fails if [Button, Switch and LED](BUTTON-AND-LED.md) and the code disagree. Change them together (see [CLAUDE.md](../CLAUDE.md)).
+
+Wi-Fi maintenance mode is on by default (`CONFIG_SHELLY_MAINTENANCE`, in the "Shelly Wi-Fi maintenance mode" menu). The Wi-Fi driver's static data costs about 24 KB of RAM in normal operation, where Wi-Fi never runs. Turning the option off gives that back, and the 5 s hold is then refused.
 
 Every build also runs `scripts/check-reversibility.py`, which fails the build if the firmware could stop a device from returning to stock. See [Reversibility](REVERSIBILITY.md#what-this-firmware-guarantees). The examples below build the Shelly 1 Gen4 `light` variant; to build a different one, substitute its hardware and variant directories in the `cd` command.
 

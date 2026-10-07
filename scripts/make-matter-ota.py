@@ -91,6 +91,12 @@ def main():
         if not os.path.isfile(p):
             sys.exit(f"missing build output: {p}")
 
+    # Package only a build that passes the reversibility check, whichever
+    # target built it (`idf.py app` skips the check).
+    check = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-reversibility.py")
+    if subprocess.run([sys.executable, check, variant_dir]).returncode != 0:
+        sys.exit("the build fails the reversibility check; not packaging it")
+
     vid = sdkconfig_int(sdkconfig, "CONFIG_DEVICE_VENDOR_ID")
     pid = sdkconfig_int(sdkconfig, "CONFIG_DEVICE_PRODUCT_ID")
     version = int(define(header, "CHIP_DEVICE_CONFIG_DEVICE_SOFTWARE_VERSION").split()[0], 0)
@@ -103,6 +109,19 @@ def main():
     # marks the update failed.
     if version_str.encode() not in open(app_bin, "rb").read():
         sys.exit(f"version {version_str} not found in {app_bin} — rebuild before packaging")
+
+    # Wi-Fi maintenance mode installs an image only if its hardware code
+    # (shelly_hw_desc.h, at byte 288) matches the device. Refuse to package
+    # one that would be refused there, or would reach the wrong hardware.
+    m = re.search(r'^CONFIG_SHELLY_HARDWARE_CODE="([^"]*)"$', open(sdkconfig).read(), re.M)
+    if not m:
+        sys.exit(f"CONFIG_SHELLY_HARDWARE_CODE not set in {sdkconfig}")
+    image = open(app_bin, "rb").read(288 + 20)
+    magic = int.from_bytes(image[288:292], "little")
+    hw_code = image[292:308].split(b"\0")[0].decode(errors="replace")
+    if magic != 0x44574853 or hw_code != m.group(1):
+        sys.exit(f"{app_bin} carries hardware code {hw_code!r} (magic 0x{magic:08X}), expected "
+                 f"{m.group(1)!r} — rebuild before packaging")
 
     out = os.path.join(variant_dir, f"automatous-io-{hardware}-{variant}-v{version_str}.ota")
 

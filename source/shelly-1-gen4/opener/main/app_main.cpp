@@ -30,6 +30,9 @@
 
 #include <app_priv.h>
 #include <shelly_app.h>
+#if CONFIG_SHELLY_MAINTENANCE
+#include <maintenance.h>
+#endif
 #include <status_led.h>
 #include <thermal.h>
 #include <contact_sensor.h>
@@ -112,6 +115,28 @@ extern "C" void app_main()
     // Initialize status LED
     status_led_init();
 
+    // Wi-Fi maintenance mode (the button held 5 s) is a boot of its own:
+    // Matter and Thread are never started. See docs/BUTTON-AND-LED.md.
+#if CONFIG_SHELLY_MAINTENANCE
+    bool relay_was_on = false;
+    if (shelly_maintenance_boot_pending(&relay_was_on)) {
+        relay_init();
+        thermal_init();
+        app_driver_local_pulse_init();
+        shelly_ui_config_t maintenance_ui = {
+            .toggle = app_toggle,
+            .local_toggle = app_driver_local_pulse,
+            .switch_role = UI_SWITCH_CONTACT,
+            .switch_handler = contact_sensor_report,
+        };
+        shelly_ui_init(&maintenance_ui);
+        // Momentary: the trigger is never restored, or it would stay closed
+        // with no pulse timer to release it.
+        (void)relay_was_on;
+        shelly_maintenance_run(false, app_driver_local_pulse);
+    }
+#endif
+
     MEMORY_PROFILER_DUMP_HEAP_STAT("Bootup");
 
     // Initialize subsystems. Order matters for safety:
@@ -123,8 +148,9 @@ extern "C" void app_main()
     contact_sensor_init();
     shelly_ui_config_t ui_config = {
         .toggle = app_toggle,
-        .local_toggle = nullptr,
+        .local_toggle = app_driver_local_pulse,
         .switch_role = UI_SWITCH_CONTACT,
+        .switch_handler = contact_sensor_report,
     };
     shelly_ui_init(&ui_config);
 

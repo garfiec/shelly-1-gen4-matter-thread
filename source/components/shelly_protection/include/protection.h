@@ -20,10 +20,12 @@
 // The home's circuit breaker is the primary protection. See
 // docs/PROTECTION.md.
 //
-//   Overcurrent   I²t heat model on I_RMS. Trips and LATCHES the relay off.
-//                 A deliberate On clears the latch: an On/OnWithTimedOff/
-//                 OnWithRecallGlobalScene command, or a Toggle, button press
-//                 or wall-switch flip while off. A power cycle also clears
+//   Overcurrent   I²t heat model on I_RMS, counted while the relay is
+//                 closed. Trips and LATCHES the relay off. A deliberate On
+//                 clears the latch: an On command, an OnWithTimedOff or
+//                 OnWithRecallGlobalScene that the OnOff server acts on as an
+//                 On, a Toggle while off, or a button press or wall-switch
+//                 flip that turns the relay on. A power cycle also clears
 //                 it. A software reset (crash, watchdog, OTA reboot) keeps
 //                 it: the latch lives in RTC memory.
 //   Overvoltage   Above the limit for the learned mains nominal, sustained.
@@ -59,11 +61,17 @@ bool protection_is_latched(void);
 // Set the OnOff endpoint protection turns off on a trip, and hook its On,
 // Off, Toggle and effect commands to tell deliberate user actions apart
 // from internal writes. Also sets the shelly_onoff_toggle() local-toggle
-// hook, so every button press or wall-switch flip counts: a toggle from Off
-// is a deliberate On (clears the latch), and any toggle cancels a pending
-// overvoltage restore. Call after the endpoint is created, before Matter
-// starts.
+// hooks, so every button press or wall-switch flip counts: a toggle from
+// Off that the relay accepts is a deliberate On (clears the latch), and any
+// toggle cancels a pending overvoltage restore. Call after the endpoint is
+// created, before Matter starts.
 esp_err_t protection_attach_endpoint(uint16_t relay_endpoint_id);
+
+// Only the button and wall-switch hook of protection_attach_endpoint(), for
+// Wi-Fi maintenance mode, which has no Matter endpoint: a local toggle that
+// turns the relay on still clears an overcurrent trip, and any local toggle
+// still cancels an overvoltage restore.
+void protection_attach_local_inputs(void);
 
 // One meter sample. valid=false when no valid frame arrived this poll.
 // Called from the metering task every poll.

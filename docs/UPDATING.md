@@ -2,7 +2,7 @@
 
 **[README](../README.md)** > **Updating** · [Report an issue](../../../issues/new)
 
-This guide covers updating a supported Shelly Gen4 device that is already running the Automatous firmware with Matter OTA support. There are three paths, and the right one depends on whether you want to keep the device's Matter commissioning or not. If you have not flashed the firmware yet, start with the [Flashing Guide](FLASHING.md).
+This guide covers updating a supported Shelly Gen4 device that is already running the Automatous firmware with Matter OTA support. There are four paths, and the right one depends on whether you want to keep the device's Matter commissioning or not. If you have not flashed the firmware yet, start with the [Flashing Guide](FLASHING.md).
 
 If your Shelly 1 Gen4 is running an Automatous build earlier than v2.0.0, update it with a one-time full reflash over [UART](FLASHING.md#flash-with-usb-uart). The partition layout changed in v2.0.0; this one step erases commissioning and needs to be re-commissioned afterward. From v2.0.0 onward this requirement no longer applies, and further updates are delivered via OTA. The Shelly 1 Mini Gen4 has had the OTA-capable layout since its first release.
 
@@ -12,6 +12,7 @@ If your Shelly 1 Gen4 is running an Automatous build earlier than v2.0.0, update
 
 - [Choosing an update path](#choosing-an-update-path)
 - [Matter OTA through Home Assistant](#matter-ota-through-home-assistant)
+- [Wi-Fi maintenance mode](#wi-fi-maintenance-mode)
 - [ESP-IDF CLI](#esp-idf-cli)
 - [Building the OTA image](#building-the-ota-image)
 
@@ -22,10 +23,13 @@ If your Shelly 1 Gen4 is running an Automatous build earlier than v2.0.0, update
 | Path | Preserves commissioning | Hardware | Method |
 |---|---|---|---|
 | Matter OTA through Home Assistant | Yes | None | OTA |
+| Wi-Fi maintenance mode | Yes | A phone or laptop | Upload over the device's own Wi-Fi |
 | ESP-IDF CLI | Yes | USB-UART adapter | UART flash |
 | ESPConnect | No | USB-UART adapter | UART flash |
 
 The easiest path is Matter OTA. The new firmware is sent to the device over Thread, the device writes it to its inactive slot and reboots, and its Matter commissioning, Thread credentials, and ecosystem pairings all survive. No wires, no re-pairing.
+
+Wi-Fi maintenance mode needs no Home Assistant and no wires, only a phone or laptop next to the device. Unlike Matter OTA, it can install an older version, and it still works when Thread or Matter is not.
 
 ESPConnect is the full reinstall covered in the [Flashing Guide](FLASHING.md#flash-with-espconnect). It is listed here for comparison only. It erases flash, and therefore commissioning, so it is for a first install or switching variants, and not for an in-place update.
 
@@ -85,6 +89,55 @@ Once the image is loaded, the update is available in two places. Use whichever y
 > Any restart in the first 60 seconds after an update, including a power cut, counts as a failure and rolls back. Leave the device powered for a minute after an update.
 
 > 💡 **One image updates every matching device.** The provider offers the stored image by vendor and product ID; a single `.ota` updates every device of that variant on your Thread network. Publish once, and each matching device picks it up the next time it checks in.
+
+---
+
+## Wi-Fi maintenance mode
+
+> **Experimental.** Built and unit-tested, not yet verified on hardware.
+
+Hold the device's button for 5 seconds and the device restarts into Wi-Fi maintenance mode. For as long as the mode lasts, Matter and Thread are off and the device runs its own open Wi-Fi network with an update page. It is the same idea as stock Shelly firmware's 5-second hold, and it uses the same address, `192.168.33.1`. Every gesture and LED pattern involved is in [Button, Switch and LED](BUTTON-AND-LED.md).
+
+The mode is a restart rather than a switch because Espressif does not support a Wi-Fi access point alongside a Thread router on the ESP32-C6. A boot of its own also leaves all of the device's memory to Wi-Fi and the upload.
+
+### 1. Get the OTA image
+
+Use the same `.ota` file as for [Matter OTA](#2-get-the-ota-image): `automatous-io-{hardware}-{variant}-vX.Y.Z.ota`. The page refuses:
+- a `.bin`: use the `.ota`;
+- firmware for a different Shelly model: the image carries its hardware code (`S1G4`, `Mini1G4` or `S1PMG4`), and it must match;
+- firmware built before this feature: it has no hardware code, so install it over UART. Matter OTA only offers a version higher than the one running, and every build without a hardware code is older than one with it.
+
+### 2. Enter the mode
+
+1. Hold the button. After 5 seconds the LED blinks every ½ second: let go.
+2. The LED gives one long flash and the device restarts. The relay drops briefly while it restarts, then returns to its previous state, unless over-temperature or a protection trip refuses it. The Opener's trigger always stays off.
+3. The LED shows a double blink: the mode is running.
+
+The hold is refused (three quick flashes) within 60 seconds of an update, because a restart before the update confirms itself would roll it back, and while a Matter OTA download is in progress.
+
+### 3. Upload
+
+1. On a phone or laptop, join the Wi-Fi network named `Shelly-<model>-<last six digits of the MAC>`, for example `Shelly-S1PMG4-A1B2C3`. It is open, like stock Shelly's setup network: while the mode lasts, anyone within Wi-Fi range can use the page, switch the relay and install firmware built for this model. Enter the mode only when you are about to use it, and press **Exit** when you are done.
+2. The update page usually opens on its own. If not, browse to `http://192.168.33.1`. Your phone may warn that the network has no internet; that is expected.
+3. The page shows the model, variant, firmware version and relay state. Choose the `.ota` file and press **Install**. The LED stays solid while the file uploads and installs.
+4. The device checks the file before erasing anything, installs it into its inactive slot, verifies it and restarts into it.
+
+To install an older version of the same variant, tick **Allow installing an older version** first. An image for a different variant of the same hardware (for example Outlet onto a device running Light) installs whatever its version, since each variant has its own version numbers, but it is a different Matter device type: remove the device from your controller and pair it again afterward.
+
+### 4. Back to normal
+
+The device returns to normal operation, with Matter and Thread back on, in any of these cases:
+- after an upload;
+- when you press **Exit** on the page;
+- when you hold the button 5 seconds again;
+- after 10 minutes with the page closed.
+
+A 5 s hold during an upload abandons it: nothing is installed. The relay's state in the mode becomes its previous state, and it then follows its power-on setting from there: with the default Off it turns off, with Previous it keeps that state (see [Button, Switch and LED](BUTTON-AND-LED.md), P-03). [Automatic rollback](#5-install-the-update) applies as for a Matter OTA: leave the device powered for a minute after an update.
+
+While the mode lasts:
+- a tap and the page's Toggle still switch the relay, and so does the wall switch on the Light, Outlet, Mini and 1PM (the Opener's contact and the Light Switch's bindings need Matter and are ignored), but controllers only see the relay's state once the device is back in normal mode;
+- Home Assistant shows the device as unavailable;
+- every protection still trips.
 
 ---
 

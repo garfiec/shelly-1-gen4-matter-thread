@@ -37,7 +37,7 @@ purposes.
 Every part in the zip comes from the build; no Shelly binaries are included. The zip
 replaces the stock bootloader with the build's own.
 """
-import argparse, datetime, hashlib, json, os, sys, tempfile, zipfile
+import argparse, datetime, hashlib, json, os, subprocess, sys, tempfile, zipfile
 
 # Shelly's internal hardware codes, keyed by the source/<hardware> directory. Only
 # codes confirmed against real hardware belong here; read an unknown unit's code from
@@ -104,6 +104,12 @@ def main():
     missing = [p for p in src.values() if not os.path.isfile(p)]
     if missing:
         sys.exit("missing build outputs:\n  " + "\n  ".join(missing))
+
+    # This zip carries the bootloader and the partition table: package only a
+    # build that passes the reversibility check, whichever target built it.
+    check = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-reversibility.py")
+    if subprocess.run([sys.executable, check, variant_dir, "--elf-if-available"]).returncode != 0:
+        sys.exit("the build fails the reversibility check; not packaging it")
 
     stem = f"automatous-io-{hardware}-{variant}-v{version}-ota"
     zip_out = os.path.join(variant_dir, f"{stem}.zip")

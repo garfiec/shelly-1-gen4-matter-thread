@@ -37,9 +37,7 @@
 #include <app/server/CommissioningWindowManager.h>
 #include <app/server/Server.h>
 
-#if CONFIG_SHELLY_MAINTENANCE
-#include <maintenance.h>
-#endif
+#include <relay.h>
 
 using namespace esp_matter;
 
@@ -120,6 +118,123 @@ void shelly_ui_matter_started(void)
 }
 
 // ---------------------------------------------------------------------------
+// Wi-Fi maintenance mode request, and the way back
+// ---------------------------------------------------------------------------
+//
+// The 5 s hold records a request here and restarts; app_main then runs the
+// maintenance boot (shelly_maintenance component). Leaving that boot for
+// normal mode records the relay state in the same slot, for the normal boot
+// that follows. Like the reset record, it lives in RTC_NOINIT memory, and is
+// honored only after a deliberate software restart. Every boot reads and
+// clears it once (take_record), whichever variant and whether or not it
+// uses it, so nothing stale is left for a later boot.
+
+#define MAINT_RECORD_MAGIC 0x544E4D53u  // 'SMNT': enter maintenance mode
+#define EXIT_RECORD_MAGIC  0x58454D53u  // 'SMEX': back from it, relay_on kept
+#if CONFIG_SHELLY_MAINTENANCE
+#define MAINTENANCE_BUILT 1
+#else
+#define MAINTENANCE_BUILT 0
+#endif
+
+typedef struct {
+    uint32_t magic;
+    uint32_t relay_on;
+    uint32_t check;
+} maint_record_t;
+
+static RTC_NOINIT_ATTR maint_record_t s_maint_record;
+static bool s_maintenance_active = false;
+
+// What this boot found in the record: its magic if valid, else 0.
+static bool s_record_taken = false;
+static uint32_t s_record_found = 0;
+static bool s_record_relay_on = false;
+
+static uint32_t maint_check(const maint_record_t *r)
+{
+    return ~(r->magic ^ (r->relay_on * 0x9E3779B9u));
+}
+
+static void record_store(uint32_t magic)
+{
+    s_maint_record.magic = magic;
+    s_maint_record.relay_on = relay_get() ? 1 : 0;
+    s_maint_record.check = maint_check(&s_maint_record);
+}
+
+static void take_record(void)
+{
+    if (s_record_taken) {
+        return;
+    }
+    s_record_taken = true;
+    uint32_t magic = s_maint_record.magic;
+    bool valid = (magic == MAINT_RECORD_MAGIC || magic == EXIT_RECORD_MAGIC) &&
+                 s_maint_record.check == maint_check(&s_maint_record) && esp_reset_reason() == ESP_RST_SW;
+    s_record_found = valid ? magic : 0;
+    s_record_relay_on = s_maint_record.relay_on != 0;
+    // Consume it now: a crash in maintenance mode restarts normally.
+    s_maint_record.magic = 0;
+    s_maint_record.check = 0;
+}
+
+esp_err_t shelly_maintenance_request(void)
+{
+#if CONFIG_SHELLY_MAINTENANCE
+    record_store(MAINT_RECORD_MAGIC);
+    ESP_LOGW(TAG, "Restarting into Wi-Fi maintenance mode");
+    return ESP_OK;
+#else
+    return ESP_ERR_NOT_SUPPORTED;
+#endif
+}
+
+bool shelly_maintenance_boot_pending(bool *relay_was_on)
+{
+    take_record();
+    if (s_record_found != MAINT_RECORD_MAGIC || !MAINTENANCE_BUILT) {
+        return false;
+    }
+    s_maintenance_active = true;
+    if (relay_was_on != nullptr) {
+        *relay_was_on = s_record_relay_on;
+    }
+    return true;
+}
+
+bool shelly_maintenance_active(void)
+{
+    return s_maintenance_active;
+}
+
+void shelly_maintenance_exit_record(void)
+{
+    record_store(EXIT_RECORD_MAGIC);
+}
+
+void shelly_maintenance_carry_relay(uint16_t endpoint_id)
+{
+    take_record();
+    if (s_record_found != EXIT_RECORD_MAGIC || endpoint_id == 0) {
+        return;
+    }
+    s_record_found = 0;
+    bool on = s_record_relay_on;
+    // Stored before Matter starts and without callbacks: the relay itself
+    // follows once StartUpOnOff has been applied to this value.
+    attribute_t *attribute =
+        attribute::get(endpoint_id, chip::app::Clusters::OnOff::Id, chip::app::Clusters::OnOff::Attributes::OnOff::Id);
+    esp_matter_attr_val_t val = esp_matter_bool(on);
+    esp_err_t err = attribute == nullptr ? ESP_ERR_NOT_FOUND : attribute::set_val(attribute, &val, false);
+    if (err != ESP_OK && err != ESP_ERR_NOT_FINISHED) {
+        ESP_LOGW(TAG, "Relay state from Wi-Fi maintenance mode not kept: %s", esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "Back from Wi-Fi maintenance mode, where the relay was %s", on ? "on" : "off");
+}
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
@@ -136,7 +251,12 @@ static bool ota_download_busy(void)
     if (!shelly_app_is_started()) {
         return false;
     }
-    lock::ScopedChipStackLock lock(portMAX_DELAY);
+    ShellyInputLock lock(SHELLY_INPUT_LOCK_TIMEOUT_MS);
+    if (!lock.locked()) {
+        // Matter is too busy to ask: refuse the restart, as for a download.
+        ESP_LOGW(TAG, "Matter busy for %d ms: Wi-Fi mode refused", SHELLY_INPUT_LOCK_TIMEOUT_MS);
+        return true;
+    }
     chip::OTARequestorInterface *requestor = chip::GetRequestorInstance();
     return requestor != nullptr &&
            requestor->GetCurrentUpdateState() != chip::OTARequestorInterface::OTAUpdateStateEnum::kIdle;
@@ -145,13 +265,14 @@ static bool ota_download_busy(void)
 static ui_state_t current_state(ui_input_t input)
 {
     ui_state_t st = {};
-#if CONFIG_SHELLY_MAINTENANCE
     st.maintenance = shelly_maintenance_active();
+#if CONFIG_SHELLY_MAINTENANCE
     st.maintenance_available = true;
 #endif
     st.started = shelly_app_is_started();
-    st.pending_verify = image_pending_verify();
-    // Only Wi-Fi mode depends on it; skip the lock for everything else.
+    // Only the holds that restart the device depend on these: skip the
+    // otadata read and the lock for taps and the wall switch.
+    st.pending_verify = (input == UI_INPUT_WIFI_MODE || input == UI_INPUT_FACTORY_RESET) && image_pending_verify();
     st.ota_busy = input == UI_INPUT_WIFI_MODE && !st.maintenance && ota_download_busy();
     st.switch_role = s_config.switch_role;
     return st;
@@ -164,13 +285,22 @@ static ui_state_t current_state(ui_input_t input)
 static void open_pairing_work(intptr_t arg)
 {
     chip::Server &server = chip::Server::GetInstance();
-    if (server.GetFailSafeContext().IsFailSafeArmed()) {
+    chip::CommissioningWindowManager &mgr = server.GetCommissioningWindowManager();
+    if (server.GetFailSafeContext().IsFailSafeArmed() || mgr.GetPASESession().HasValue()) {
         // Someone is pairing right now: leave their session alone.
         ESP_LOGW(TAG, "Pairing in progress, not reopening the window");
         status_led_flash_refused();
         return;
     }
-    chip::CommissioningWindowManager &mgr = server.GetCommissioningWindowManager();
+    if (mgr.CommissioningWindowStatusForCluster() ==
+        chip::app::Clusters::AdministratorCommissioning::CommissioningWindowStatusEnum::kEnhancedWindowOpen) {
+        // A controller opened this window with its own pairing code (Share
+        // device). Replacing it with a basic window would make the code the
+        // controller shows stop working, so it stays as it is.
+        ESP_LOGI(TAG, "Pairing window opened by a controller: left as it is");
+        status_led_flash_accepted();
+        return;
+    }
     bool paired = server.GetFabricTable().FabricCount() > 0;
     uint16_t seconds = paired ? PAIRING_WINDOW_PAIRED_S : PAIRING_WINDOW_UNPAIRED_S;
     if (mgr.IsCommissioningWindowOpen()) {
@@ -199,7 +329,12 @@ static void carry_out(ui_outcome_t outcome)
 {
     switch (outcome) {
     case UI_IGNORE:
+        break;
+
     case UI_VARIANT:
+        if (s_config.switch_handler != nullptr) {
+            s_config.switch_handler();
+        }
         break;
 
     case UI_REFUSE:
@@ -221,17 +356,16 @@ static void carry_out(ui_outcome_t outcome)
         break;
 
     case UI_ENTER_MAINTENANCE:
-#if CONFIG_SHELLY_MAINTENANCE
         if (shelly_maintenance_request() == ESP_OK) {
             status_led_flash_accepted();
             restart_after_flash();
         }
-#endif
         status_led_flash_refused();
         break;
 
     case UI_EXIT_MAINTENANCE:
         ESP_LOGI(TAG, "Leaving maintenance mode");
+        shelly_maintenance_exit_record();
         status_led_flash_accepted();
         restart_after_flash();
         break;

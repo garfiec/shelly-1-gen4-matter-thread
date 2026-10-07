@@ -92,9 +92,10 @@ This is confirmed for the Shelly web UI install path. A direct UART flash does n
 
 The eFuse marker above is written by Shelly's own updater during a web UI install, before this firmware ever runs. The firmware itself is built so that it cannot make a restore harder:
 
-- **It never writes eFuses.** Every build runs `scripts/check-reversibility.py`, which fails the build if the app or bootloader links any ESP-IDF function that burns eFuses.
+- **It never writes eFuses.** Every build runs `scripts/check-reversibility.py`, which fails the build if the app or bootloader links any ESP-IDF function that burns eFuses. Every `idf.py` flash target (the full flash and the app, bootloader and partition-table flashes) waits for the check, and the packaging scripts (`make-matter-ota.py`, `make-webui-ota-zip.py`) run it again before they package a build.
 - **No secure boot, flash encryption, eFuse anti-rollback or ROM download lockout.** Each of these burns eFuses, and several would block a UART restore. The build fails if any of them is enabled.
-- **Stock partition layout.** The build fails unless the partition table matches the stock Shelly Gen4 layout exactly. The stock `zb_storage` and `shelly` regions are never touched.
+- **Stock partition layout.** The build fails unless it uses a custom partition table at the stock address (0x10000) and that table matches the stock Shelly Gen4 layout exactly. The stock `zb_storage` and `shelly` regions are never touched.
+- **The Wi-Fi uploader writes only the app slots.** [Wi-Fi maintenance mode](UPDATING.md#wi-fi-maintenance-mode) installs an update the same way a Matter OTA does, into the inactive app slot. It never writes the bootloader, the partition table or the stock `shelly` and `zb_storage` regions, and it only accepts an image built for the same Shelly model.
 - **Firmware rollback without eFuses.** A new firmware image that fails to start is rolled back to the previous one (see [Updating](UPDATING.md)). This uses the bootloader's app rollback, which keeps its state in flash, not ESP-IDF's eFuse-based anti-rollback.
 
 Before flashing any device over UART, you can confirm that the chip itself is not locked down. With the device in flash mode, run the read-only `espefuse.py --chip esp32c6 --port <PORT> summary` and check that `SPI_BOOT_CRYPT_CNT` is 0, `SECURE_BOOT_EN` is False and `DIS_DOWNLOAD_MODE` is False. These are also why the web UI package's encryption flag never matters: it only has an effect on a chip whose flash encryption is already on.

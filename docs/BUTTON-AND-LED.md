@@ -91,10 +91,10 @@ Every gesture in every state. A refused action shows three quick flashes (LED-14
 | B-18 | Normal, built without Wi-Fi mode | 3+ taps | Open pairing | |
 | B-19 | Normal, built without Wi-Fi mode | Hold 5-10 s | Refused | This build has no Wi-Fi mode |
 | B-20 | Normal, built without Wi-Fi mode | Hold 10-20 s | Factory reset | |
-| B-21 | Wi-Fi maintenance mode | Tap | Toggle, without Matter | The relay switches directly; Home Assistant does not see it until the device is back in normal mode |
+| B-21 | Wi-Fi maintenance mode | Tap | Toggle, without Matter | The relay switches directly; Home Assistant sees the new state once the device is back in normal mode (P-03) |
 | B-22 | Wi-Fi maintenance mode | 3+ taps | Refused | Pairing needs Matter, which is off in Wi-Fi mode |
-| B-23 | Wi-Fi maintenance mode | Hold 5-10 s | Exit Wi-Fi mode | The same gesture that entered it |
-| B-24 | Wi-Fi maintenance mode | Hold 10-20 s | Factory reset after a restart | The device restarts into normal mode and resets once Matter starts |
+| B-23 | Wi-Fi maintenance mode | Hold 5-10 s | Exit Wi-Fi mode | The same gesture that entered it. An upload in progress is abandoned; nothing is installed |
+| B-24 | Wi-Fi maintenance mode | Hold 10-20 s | Factory reset after a restart | The device restarts into normal mode and resets once Matter starts. An upload in progress is abandoned |
 
 "Normal" covers every normal-mode state not listed separately: paired or not, pairing window open or closed, joining Thread or connected, Identify running, or a hardware fault active.
 
@@ -118,6 +118,7 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 
 **Toggle.** Flips the relay through Matter, so every controller sees the change.
 - If the relay refuses to turn on, the LED shows the refusal flash (LED-14). It refuses during over-temperature, when the temperature sensor has failed, and on the 1PM during overvoltage and for 2 s after a protection trip. See [Protection and Metering](PROTECTION.md).
+- If Matter stays busy for 2 s (for example while it is pairing), the toggle is refused too (LED-14) rather than acting late. The same applies to the Wi-Fi mode hold.
 - **1PM:** a tap or switch change that turns the relay on clears an overcurrent trip. One that turns it off during an overvoltage trip cancels the automatic restore.
 - **Opener:** a toggle is a 500 ms pulse. A tap during the pulse ends it.
 - **Light Switch:** the button toggles the local relay only.
@@ -127,15 +128,16 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 **Open pairing.** Opens a Matter pairing window over Bluetooth and Thread, and the LED shows the pairing blink (LED-02).
 - **Paired device:** the window lasts 3 minutes. Use it to add the device to a second ecosystem.
 - **Unpaired device:** it lasts 15 minutes, like the window the device opens by itself at boot. After 15 minutes the device stops advertising (LED-03). Press 3 times to start again; no power cycle needed.
-- **A window already open** restarts with its full time.
+- **A window already open** restarts with its full time, unless a controller opened it with its own pairing code (Share device, for example): that window is left as it is, so the code the controller shows keeps working.
 - **Refused** while someone is part-way through pairing, so their session is not cut off.
 
-**Enter Wi-Fi mode.** The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own Wi-Fi network, and a web page takes firmware updates. See [Updating](UPDATING.md).
-- The relay keeps its state across the restart, apart from a brief off while it reboots.
-- The mode ends after 10 minutes without use, on the page's Exit button, with the 5 s hold again, or after an upload.
+**Enter Wi-Fi mode** (experimental). The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own open Wi-Fi network named `Shelly-<model>-<last six digits of the MAC>`, and the page at `http://192.168.33.1` installs a firmware update. See [Updating](UPDATING.md#wi-fi-maintenance-mode).
+- The relay keeps its state across the restart, apart from a brief off while it reboots. The Opener's trigger always stays off.
+- The mode ends after an upload, on the page's Exit button, with the 5 s hold again, or after 10 minutes with the page closed.
 - Home Assistant shows the device as unavailable until it is back in normal mode.
+- If the mode cannot start (the network or the page fails), the device flashes refusal and restarts normally.
 
-**Exit Wi-Fi mode.** The device restarts into normal mode. The relay then follows its power-on setting (see below).
+**Exit Wi-Fi mode.** The device restarts into normal mode. The state the relay had in Wi-Fi mode becomes its previous state, and the relay then follows its power-on setting from there (see below): with Previous it keeps that state, and controllers see it once Matter is back.
 
 **Factory reset.** Clears the Matter pairings and the Thread network, then restarts ready to pair (LED-02).
 - The firmware stays installed. This is not a return to stock firmware: see [Reversibility](REVERSIBILITY.md).
@@ -150,7 +152,7 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 |---|---|---|---|
 | P-01 | Power-on, or any restart into normal mode | Follows StartUpOnOff: default Off. The Opener is always Off. A 1PM with an overcurrent trip stays Off. | Off while booting, then the state |
 | P-02 | Restart into Wi-Fi mode | Back to its state before the restart, after a brief off | Wi-Fi mode double blink (LED-08) |
-| P-03 | Exit from Wi-Fi mode | Follows StartUpOnOff, as P-01 | Off while booting, then the state |
+| P-03 | Exit from Wi-Fi mode | Follows StartUpOnOff, as P-01, from its state in Wi-Fi mode: with Previous it keeps that state | Off while booting, then the state |
 | P-04 | After a factory reset | Off | Pairing blink (LED-02) |
 
 ## LED
@@ -160,7 +162,7 @@ One LED shows everything. When several things apply at once, the highest wins:
 1. Button hold hint (while held)
 2. One-shot flash (press, refused, accepted)
 3. Identify
-4. Hardware fault
+4. Hardware fault, except in Wi-Fi maintenance mode, whose patterns (LED-08, LED-09) show over a fault so you can see that the mode is running
 5. Device state
 
 Timings are in milliseconds. "Repeating" patterns loop; "once" patterns play one time over whatever else is showing.
@@ -173,7 +175,7 @@ Timings are in milliseconds. "Repeating" patterns loop; "once" patterns play one
 | LED-04 | on 500, off 1500, repeating | Paired, joining the Thread network |
 | LED-05 | on | Connected and working |
 | LED-06 | on 100, off 900, repeating | Identify: a controller asked the device to show itself |
-| LED-07 | on 100, off 100, repeating | A hardware fault is active, such as over-temperature or a protection trip. See [Protection and Metering](PROTECTION.md). A 1PM on bench power shows this too, because its meter has no mains to measure. |
+| LED-07 | on 100, off 100, repeating | A hardware fault is active, such as over-temperature or a protection trip. See [Protection and Metering](PROTECTION.md). A 1PM on bench power shows this too, because its meter has no mains to measure (in Wi-Fi mode it shows LED-08 or LED-09 instead). |
 | LED-08 | on 100, off 100, on 100, off 700, repeating | Wi-Fi maintenance mode |
 | LED-09 | on | Wi-Fi maintenance mode, firmware upload in progress |
 | LED-10 | off 100, once | Button press registered |

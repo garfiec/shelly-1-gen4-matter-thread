@@ -15,6 +15,14 @@ menu "Shelly board"
     # unit measured at 120 V / 60 Hz; confirm the PCB revision before
     # flashing (docs/FLASHING.md).
 
+    config SHELLY_HARDWARE_CODE
+        string "Shelly hardware code"
+        default "S1PMG4"
+        help
+            Shelly's own code for this hardware, as in make-webui-ota-zip.py.
+            Stored in every image (shelly_hw_desc.h) so Wi-Fi maintenance mode
+            refuses firmware built for a different Shelly model.
+
     config SHELLY_RELAY_GPIO
         int "Relay GPIO (active high)"
         default 4

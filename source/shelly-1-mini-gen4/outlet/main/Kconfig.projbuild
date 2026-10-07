@@ -13,6 +13,14 @@ menu "Shelly board"
 
     # Shelly 1 Mini Gen4 pin map, PCB v0.1.2. See docs/GPIO.md.
 
+    config SHELLY_HARDWARE_CODE
+        string "Shelly hardware code"
+        default "Mini1G4"
+        help
+            Shelly's own code for this hardware, as in make-webui-ota-zip.py.
+            Stored in every image (shelly_hw_desc.h) so Wi-Fi maintenance mode
+            refuses firmware built for a different Shelly model.
+
     config SHELLY_RELAY_GPIO
         int "Relay GPIO (active high)"
         default 10

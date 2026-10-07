@@ -24,6 +24,7 @@
 #include <esp_matter.h>
 #include <esp_matter_core.h>
 
+#include <shelly_app.h>
 #include <switch_input.h>
 
 // BooleanState StateValue is read-only / internally managed, so it must be
@@ -44,9 +45,12 @@ extern uint16_t contact_sensor_endpoint_id;
 // the shared switch_input module (debounce, level compare, no internal
 // pulls). This file maps its level to the Matter contact state.
 
+// A change goes through the device UI, which decides what it does in each
+// state (docs/BUTTON-AND-LED.md SW-04..06): once Matter is up, it calls
+// contact_sensor_report() back (the switch_handler in app_main.cpp).
 static void contact_sensor_changed(bool level, void *arg)
 {
-    contact_sensor_report();
+    shelly_ui_switch_changed();
 }
 
 bool contact_sensor_read_state(void)

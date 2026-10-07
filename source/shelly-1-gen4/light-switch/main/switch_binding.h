@@ -33,8 +33,17 @@
 // State cluster on the contact sensor endpoint, so controllers can see
 // the physical switch state that detached mode otherwise hides.
 //
+// Each change goes through the device UI first (shelly_ui_switch_changed),
+// which decides what it does in each state (docs/BUTTON-AND-LED.md
+// SW-07..09) and calls switch_binding_send() once Matter is up.
+//
 // Returns ESP_OK on success, error code on failure.
 esp_err_t switch_binding_init(void);
+
+// Send Toggle to the bound lights and report the position: the device UI's
+// handling of a wall-switch change on this variant (its switch_handler).
+// Takes the CHIP stack lock internally.
+void switch_binding_send(void);
 
 // Read the current wall switch position as the Matter StateValue
 // (true = toggle on/closed, false = off/open), applying

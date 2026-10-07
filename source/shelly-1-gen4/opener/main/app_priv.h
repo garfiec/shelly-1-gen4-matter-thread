@@ -71,6 +71,12 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
 
 esp_err_t app_driver_relay_set_defaults(uint16_t endpoint_id);
 
+// A momentary pulse without Matter, for Wi-Fi maintenance mode. True if the
+// relay accepted it. app_driver_local_pulse_init() runs first, in the
+// maintenance boot; without it every pulse is refused.
+esp_err_t app_driver_local_pulse_init(void);
+bool app_driver_local_pulse(void);
+
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
 #define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()                                           \
     {                                                                                   \

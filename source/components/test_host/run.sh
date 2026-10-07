@@ -68,4 +68,14 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
 
 "$OUT_CODE"
 
+# The diagnostics log ring (CONFIG_SHELLY_DIAG_LOG builds).
+OUT_DIAG="${TMPDIR:-/tmp}/shelly-test-diag"
+${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
+    -I$C/shelly_app_common/include \
+    test_diag.c \
+    $C/shelly_app_common/diag_ring.c \
+    -o "$OUT_DIAG"
+
+"$OUT_DIAG"
+
 python3 ../../../scripts/check-ui-spec.py

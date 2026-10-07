@@ -82,6 +82,23 @@ The manual-code encoder was cross-checked against CHIP's own generator (`src/set
 
 The same script runs `scripts/check-ui-spec.py`, which fails if [Button, Switch and LED](BUTTON-AND-LED.md) and the code disagree. Change them together (see [CLAUDE.md](../CLAUDE.md)).
 
+### Diagnostics build
+
+For troubleshooting a device with no serial cable, `CONFIG_SHELLY_DIAG_LOG` (off by default, in the "Shelly diagnostics" menu) keeps the last 6 KB of the log in memory that survives a restart and shows it on the [Wi-Fi mode](UPDATING.md#wi-fi-maintenance-mode) page (**Diagnostics log: Open**). It also:
+- logs free heap (current, lowest and largest block), the Thread role, and the device's addresses as OpenThread and lwIP see them, every 5 s while pairing;
+- makes OpenThread answer pings on every address, so a ping shows whether packets reach the device;
+- freezes the log 5 s after a failed pairing, so it survives until you read it. A power cut clears it; so does **Clear** on the page.
+
+It costs 6 KB of heap for the whole run. Build it into its own directory so the normal build is untouched, for example the 1PM:
+
+```bash
+cd source/shelly-1pm-gen4/outlet
+idf.py -B build_diag -DSDKCONFIG=sdkconfig.diag \
+  -DSDKCONFIG_DEFAULTS="sdkconfig.defaults.c6_thread_shelly;sdkconfig.defaults.diag" set-target esp32c6 build
+```
+
+Install its `build_diag/outlet.bin`, packaged as an `.ota`, from the Wi-Fi mode page. Go back by uploading the normal `.ota` the same way.
+
 Wi-Fi maintenance mode is on by default (`CONFIG_SHELLY_MAINTENANCE`, in the "Shelly Wi-Fi maintenance mode" menu). The Wi-Fi driver's static data costs about 24 KB of RAM in normal operation, where Wi-Fi never runs. Turning the option off gives that back, and the 5 s hold is then refused.
 
 Every build also runs `scripts/check-reversibility.py`, which fails the build if the firmware could stop a device from returning to stock. See [Reversibility](REVERSIBILITY.md#what-this-firmware-guarantees). The examples below build the Shelly 1 Gen4 `light` variant; to build a different one, substitute its hardware and variant directories in the `cd` command.

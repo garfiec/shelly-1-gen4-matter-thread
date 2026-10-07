@@ -1,0 +1,8 @@
+# Diagnostics build (docs/BUILDING.md): the log on the Wi-Fi mode page.
+# Build into build_diag with this file after sdkconfig.defaults.c6_thread_shelly.
+CONFIG_SHELLY_DIAG_LOG=y
+
+# The log hook adds about 280 B of stack to every task that logs: give the
+# two tightest ones room (diagnostics build only).
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=3072
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096

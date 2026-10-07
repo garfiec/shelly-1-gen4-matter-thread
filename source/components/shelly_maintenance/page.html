@@ -47,6 +47,7 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 <dt>Firmware</dt><dd id="version">…</dd>
 <dt>MAC</dt><dd id="mac">…</dd>
 </dl>
+<div id="diagrow" class="muted" style="margin-top:10px" hidden>Diagnostics log: <a href="/diag.txt" target="_blank">Open</a> · <a href="#" id="diagclear">Clear</a></div>
 </section>
 
 <section>
@@ -122,6 +123,7 @@ function refresh() {
       s.code_source === 'test' ? 'The shared test code: this device could not save its own code' :
       (s.code_new ? 'Made by this device just now' : 'Made by this device');
     $('switchcard').hidden = !s.switch_modes;
+    $('diagrow').hidden = !s.diag;
     $('swnow').textContent = MODE_NAMES[s.switch_mode] || s.switch_mode;
     if (!swTouched) {
       var r = document.querySelector('input[name=swmode][value=' + s.switch_mode + ']');
@@ -175,6 +177,10 @@ $('setswitch').onclick = function () {
 $('cancelchange').onclick = function () {
   var out = waiting && waiting.kind === 'switch' ? $('switchmsg') : $('codemsg');
   waiting = null; swTouched = false; post('/change/cancel', '', out);
+};
+$('diagclear').onclick = function (e) {
+  e.preventDefault();
+  fetch('/diag/clear', { method: 'POST' }).finally(refresh);
 };
 $('exit').onclick = function () {
   fetch('/exit', { method: 'POST' }).finally(function () {

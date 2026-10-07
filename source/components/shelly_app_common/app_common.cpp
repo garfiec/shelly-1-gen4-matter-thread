@@ -28,6 +28,7 @@
 
 #include <log_heap_numbers.h>
 #include <relay.h>
+#include <shelly_diag_log.h>
 #include <status_led.h>
 
 #include <app/server/CommissioningWindowManager.h>
@@ -80,6 +81,7 @@ void shelly_led_refresh(void)
 
 void shelly_app_event_cb(const chip::DeviceLayer::ChipDeviceEvent *event, intptr_t arg)
 {
+    shelly_diag_log_event(event->Type);
     switch (event->Type) {
     case chip::DeviceLayer::DeviceEventType::kInterfaceIpAddressChanged:
         ESP_LOGI(TAG, "Interface IP Address changed");

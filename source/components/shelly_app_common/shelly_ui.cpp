@@ -38,6 +38,7 @@
 #include <app/server/Server.h>
 
 #include <relay.h>
+#include <shelly_diag_log.h>
 #include <shelly_settings.h>
 
 using namespace esp_matter;
@@ -440,6 +441,11 @@ esp_err_t shelly_ui_init(const shelly_ui_config_t *config)
 {
     s_config = *config;
     shelly_settings_init();
+    // Diagnostics builds only; never in the maintenance boot, so the log a
+    // failed pairing left stays readable on the page.
+    if (!shelly_maintenance_active()) {
+        shelly_diag_log_start();
+    }
     return button_init(on_button_action, nullptr);
 }
 

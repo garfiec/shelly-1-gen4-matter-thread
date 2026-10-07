@@ -46,6 +46,7 @@
 
 #include <relay.h>
 #include <shelly_hw_desc.h>
+#include <shelly_diag_log.h>
 #include <shelly_settings.h>
 #include <shelly_setup_code.h>
 #include <status_led.h>
@@ -304,10 +305,10 @@ static esp_err_t status_get(httpd_req_t *req)
              "{\"hw\":\"%s\",\"variant\":\"%s\",\"version\":\"%s\",\"mac\":\"%s\",\"relay\":%s,"
              "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,"
              "\"switch_modes\":%s,\"switch_mode\":\"%s\","
-             "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u}",
+             "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u,\"diag\":%s}",
              shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text, source,
              created ? "true" : "false", has_modes ? "true" : "false", ui_switch_mode_name(shelly_switch_mode_get()),
-             pending_kind, pending, (unsigned)secs_left);
+             pending_kind, pending, (unsigned)secs_left, shelly_diag_log_available() ? "true" : "false");
     return send_json(req, "200 OK", body);
 }
 
@@ -422,6 +423,35 @@ static esp_err_t switch_mode_post(httpd_req_t *req)
     }
     return send_result(req, "200 OK", true, "");
 }
+
+#if CONFIG_SHELLY_DIAG_LOG
+// GET /diag.txt: the diagnostics log, streamed straight from its static
+// buffer (nothing writes it in this boot). Plain text, shown inline, so a
+// phone's browser can display and share it.
+static void diag_span(const char *bytes, size_t n, void *ctx)
+{
+    httpd_resp_send_chunk((httpd_req_t *)ctx, bytes, (ssize_t)n);
+}
+
+static esp_err_t diag_get(httpd_req_t *req)
+{
+    touch();
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    char header[160];
+    size_t n = shelly_diag_log_header(header, sizeof(header));
+    httpd_resp_send_chunk(req, header, (ssize_t)(n < sizeof(header) ? n : sizeof(header) - 1));
+    shelly_diag_log_read(diag_span, req);
+    return httpd_resp_send_chunk(req, nullptr, 0);
+}
+
+static esp_err_t diag_clear_post(httpd_req_t *req)
+{
+    touch();
+    shelly_diag_log_clear();
+    return send_result(req, "200 OK", true, "");
+}
+#endif
 
 static esp_err_t change_cancel_post(httpd_req_t *req)
 {
@@ -602,6 +632,10 @@ static esp_err_t start_http(void)
         {.uri = "/code/new", .method = HTTP_POST, .handler = code_new_post, .user_ctx = nullptr},
         {.uri = "/switch/mode", .method = HTTP_POST, .handler = switch_mode_post, .user_ctx = nullptr},
         {.uri = "/change/cancel", .method = HTTP_POST, .handler = change_cancel_post, .user_ctx = nullptr},
+#if CONFIG_SHELLY_DIAG_LOG
+        {.uri = "/diag.txt", .method = HTTP_GET, .handler = diag_get, .user_ctx = nullptr},
+        {.uri = "/diag/clear", .method = HTTP_POST, .handler = diag_clear_post, .user_ctx = nullptr},
+#endif
     };
     for (const httpd_uri_t &uri : uris) {
         err = httpd_register_uri_handler(server, &uri);

@@ -36,3 +36,9 @@ automatous-io-shelly-*-gen4-*.ota
 # IDF component manager
 idf_component_manager.yml
 .idf_component_manager/
+# Captures of a stock Shelly (scripts/capture-shelly-webui.py): device-specific, include its Matter setup code
+shelly-capture-*
+
+# Diagnostics builds (docs/BUILDING.md)
+build_diag/
+sdkconfig.diag

@@ -31,6 +31,7 @@
 #include <freertos/task.h>
 #include <string.h>
 
+#include <shelly_diag_log.h>
 #include <shelly_setup_code.h>
 #include <status_led.h>
 
@@ -304,6 +305,7 @@ static void health_task(void *arg)
             confirmed = true;
         }
 
+        shelly_diag_log_tick();
         vTaskDelay(pdMS_TO_TICKS(HEALTH_POLL_MS));
     }
 }

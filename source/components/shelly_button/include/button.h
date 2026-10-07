@@ -20,26 +20,23 @@
 
 #include <esp_err.h>
 
+#include "button_logic.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef void *shelly_button_handle_t;
-
-// Called once per press, from the button task (not the esp_timer task),
-// so it may take the CHIP stack lock and update attributes.
-typedef void (*shelly_button_cb_t)(void *arg);
+// Called once per completed gesture (see button_logic.h), from the button
+// task (not the esp_timer task), so it may take the CHIP stack lock.
+typedef void (*shelly_button_action_cb_t)(button_action_t action, void *arg);
 
 // Initialize the device button (CONFIG_SHELLY_BUTTON_GPIO).
 //
-// Configures the onboard button as an input with the variant's active
-// level. On press-down, on_press(arg) runs on the button task.
-//
-// The returned handle can be passed to app_reset_button_register() to
-// also wire factory-reset behavior to the same physical button.
-//
-// Returns a button handle on success, NULL on failure.
-shelly_button_handle_t button_init(shelly_button_cb_t on_press, void *arg);
+// Recognizes taps, multi-presses and holds (button_logic.h), shows the
+// press blip and the hold hints on the status LED, and calls on_action(arg)
+// for each completed gesture. The button is the device's main UI: see
+// docs/BUTTON-AND-LED.md.
+esp_err_t button_init(shelly_button_action_cb_t on_action, void *arg);
 
 #ifdef __cplusplus
 }

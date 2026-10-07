@@ -34,3 +34,17 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
     -lm -o "$OUT"
 
 "$OUT"
+
+# The device UI: gestures, decisions and LED patterns. Each test row is a
+# row of docs/BUTTON-AND-LED.md; check-ui-spec.py keeps the two identical.
+OUT_UI="${TMPDIR:-/tmp}/shelly-test-ui"
+${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
+    -I$C/shelly_button/include -I$C/shelly_status_led/include -I$C/shelly_app_common/include \
+    test_ui.c \
+    $C/shelly_button/button_logic.c \
+    $C/shelly_app_common/ui_policy.c \
+    -o "$OUT_UI"
+
+"$OUT_UI"
+
+python3 ../../../scripts/check-ui-spec.py

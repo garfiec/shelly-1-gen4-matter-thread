@@ -90,12 +90,11 @@ Once it is up and running, [updates are available](docs/UPDATING.md) through Hom
 
 - Shelly web UI install, with no UART adapter required (unless you want [reversibility](docs/REVERSIBILITY.md)).
 - Updates through Home Assistant with Matter OTA.
-- Physical button toggle on the onboard relay button.
+- Onboard button with stock Shelly gestures: tap to toggle, press 3 times to pair, hold 10 s to factory reset, with LED feedback while you hold. See [Button, Switch and LED](docs/BUTTON-AND-LED.md).
 - External wall switch input on the SW terminal.
 - Configurable power-on behavior through the Matter StartUpOnOff attribute.
 - Status LED indication for BLE advertising, Thread connecting, and Thread connected.
 - Identify support. Blink the LED on command from any Matter controller to locate the device.
-- Factory reset via long press of the onboard relay button.
 - Full Thread Device mode. Adds a Thread Router to your mesh for other devices.
 - Multi-fabric. Commission to multiple ecosystems at once, with state synced across all of them.
 - Temperature sensor endpoint reporting the device's internal temperature.
@@ -127,6 +126,7 @@ Most of it is in [`docs/`](docs/), with build [`scripts/`](scripts/), the change
 - [Flashing Guide](docs/FLASHING.md) — wiring, backing up stock firmware, and flashing
 - [Reversibility](docs/REVERSIBILITY.md) — warranty, factory keys, and how reversible flashing is
 - [Commissioning](docs/COMMISSIONING.md) — pairing the device and reading the status LED
+- [Button, Switch and LED](docs/BUTTON-AND-LED.md) — every gesture, every state, every LED pattern
 - [Updating](docs/UPDATING.md) — keeping a device current after flashing
 - [Power Consumption](docs/POWER.md) — measured draw and the Thread Router design choice
 - [Protection and Metering](docs/PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults

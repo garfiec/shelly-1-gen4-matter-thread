@@ -29,10 +29,8 @@
 #include <log_heap_numbers.h>
 
 #include <app_priv.h>
-#include <app_reset.h>
 #include <shelly_app.h>
 #include <status_led.h>
-#include <button.h>
 #include <thermal.h>
 #include <contact_sensor.h>
 #include <relay.h>
@@ -95,10 +93,13 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
     return err;
 }
 
-// A button press toggles the OnOff attribute, so Matter sees every change.
-static void app_button_pressed(void *arg)
+// A button tap writes OnOff, which runs the momentary pulse, so Matter sees
+// every trigger. The SW terminal is the door contact sensor, not a switch.
+// What each input does in each state is the device UI:
+// docs/BUTTON-AND-LED.md.
+static bool app_toggle(void)
 {
-    shelly_onoff_toggle(relay_endpoint_id);
+    return shelly_onoff_toggle(relay_endpoint_id);
 }
 
 extern "C" void app_main()
@@ -120,8 +121,12 @@ extern "C" void app_main()
     relay_init();
     thermal_init();
     contact_sensor_init();
-    shelly_button_handle_t button_handle = button_init(app_button_pressed, nullptr);
-    app_reset_button_register(button_handle);
+    shelly_ui_config_t ui_config = {
+        .toggle = app_toggle,
+        .local_toggle = nullptr,
+        .switch_role = UI_SWITCH_CONTACT,
+    };
+    shelly_ui_init(&ui_config);
 
     // Create a Matter node and add the mandatory Root Node device type on endpoint 0
     node::config_t node_config;

@@ -29,10 +29,8 @@
 #include <log_heap_numbers.h>
 
 #include <app_priv.h>
-#include <app_reset.h>
 #include <shelly_app.h>
 #include <status_led.h>
-#include <button.h>
 #include <thermal.h>
 #include <switch_input.h>
 #include <relay.h>
@@ -93,16 +91,17 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
     return err;
 }
 
-// Button press and wall-switch flip both toggle the relay through the
-// OnOff attribute, so Matter sees every change.
-static void app_button_pressed(void *arg)
+// The button and the wall switch toggle the relay through the OnOff
+// attribute, so Matter sees every change. What each input does in each
+// state is the device UI: docs/BUTTON-AND-LED.md.
+static bool app_toggle(void)
 {
-    shelly_onoff_toggle(relay_endpoint_id);
+    return shelly_onoff_toggle(relay_endpoint_id);
 }
 
 static void app_switch_changed(bool level, void *arg)
 {
-    shelly_onoff_toggle(relay_endpoint_id);
+    shelly_ui_switch_changed();
 }
 
 extern "C" void app_main()
@@ -124,8 +123,12 @@ extern "C" void app_main()
     relay_init();
     thermal_init();
     switch_input_init(app_switch_changed, nullptr);
-    shelly_button_handle_t button_handle = button_init(app_button_pressed, nullptr);
-    app_reset_button_register(button_handle);
+    shelly_ui_config_t ui_config = {
+        .toggle = app_toggle,
+        .local_toggle = nullptr,
+        .switch_role = UI_SWITCH_TOGGLE,
+    };
+    shelly_ui_init(&ui_config);
 
     // Create a Matter node and add the mandatory Root Node device type on endpoint 0
     node::config_t node_config;

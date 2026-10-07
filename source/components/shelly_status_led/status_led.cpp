@@ -17,6 +17,7 @@
 // status_led.cpp
 
 #include "status_led.h"
+#include "led_patterns.h"
 
 #include <esp_log.h>
 #include <driver/gpio.h>
@@ -39,66 +40,118 @@ static const char *TAG = "status_led";
 #define LED_OFF_LEVEL       0
 #endif
 
-// The base state follows the network. Identify and fault are layered on
-// top in priority order: identify > fault > base.
+#define LED_TICK_MS         50  // Pattern resolution
+
+// Layers, highest priority first: hold hint > one-shot > identify > fault
+// > base. The task picks the top active layer each tick and restarts the
+// pattern's timing whenever the shown pattern changes, so a hold hint
+// starts on time rather than part-way through a blink.
 static volatile led_state_t base_state = LED_STATE_OFF;
 static volatile bool identify_active = false;
 static volatile bool fault_active = false;
+static volatile led_hint_t hint = LED_HINT_NONE;
 
-static led_state_t effective_state(void)
+// One-shot flash: set by any task, cleared by the LED task when it ends.
+// The sequence number restarts a flash that replaces one still playing.
+static portMUX_TYPE s_oneshot_mux = portMUX_INITIALIZER_UNLOCKED;
+static led_pattern_id_t s_oneshot = LED_PAT_COUNT;  // LED_PAT_COUNT = none
+static uint32_t s_oneshot_seq = 0;
+
+static led_pattern_id_t base_pattern(led_state_t state)
 {
-    if (identify_active) {
-        return LED_STATE_IDENTIFY;
+    switch (state) {
+    case LED_STATE_BLE_ADVERTISING:
+        return LED_PAT_PAIRING;
+    case LED_STATE_UNPAIRED_IDLE:
+        return LED_PAT_UNPAIRED_IDLE;
+    case LED_STATE_THREAD_CONNECTING:
+        return LED_PAT_CONNECTING;
+    case LED_STATE_THREAD_CONNECTED:
+        return LED_PAT_CONNECTED;
+    case LED_STATE_MAINTENANCE:
+        return LED_PAT_MAINTENANCE;
+    case LED_STATE_UPLOADING:
+        return LED_PAT_UPLOADING;
+    case LED_STATE_OFF:
+    default:
+        return LED_PAT_OFF;
     }
-    if (fault_active) {
-        return LED_STATE_FAULT;
+}
+
+static led_pattern_id_t hint_pattern(led_hint_t h)
+{
+    switch (h) {
+    case LED_HINT_HOLD_WAIT:
+        return LED_PAT_HOLD_WAIT;
+    case LED_HINT_HOLD_WIFI:
+        return LED_PAT_HOLD_WIFI;
+    case LED_HINT_HOLD_RESET:
+        return LED_PAT_HOLD_RESET;
+    case LED_HINT_NONE:
+    default:
+        return LED_PAT_COUNT;
     }
-    return base_state;
 }
 
 static void status_led_task(void *arg)
 {
-    bool led_on = false;
-    uint32_t period_ms = 100;  // How often the task wakes up
+    led_pattern_id_t shown = LED_PAT_COUNT;
+    uint32_t shown_seq = 0;
+    uint32_t started = 0;
 
     while (true) {
-        led_state_t state = effective_state();
         uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
-        switch (state) {
-        case LED_STATE_OFF:
-            led_on = false;
-            break;
+        led_pattern_id_t oneshot;
+        uint32_t seq;
+        portENTER_CRITICAL(&s_oneshot_mux);
+        oneshot = s_oneshot;
+        seq = s_oneshot_seq;
+        portEXIT_CRITICAL(&s_oneshot_mux);
 
-        case LED_STATE_BLE_ADVERTISING:
-            // Rapid blink: 200ms on, 200ms off (400ms period)
-            led_on = (now % 400) < 200;
-            break;
+        led_pattern_id_t want = hint_pattern(hint);
+        if (want == LED_PAT_COUNT) {
+            want = oneshot;
+        }
+        if (want == LED_PAT_COUNT) {
+            if (identify_active) {
+                want = LED_PAT_IDENTIFY;
+            } else if (fault_active) {
+                want = LED_PAT_FAULT;
+            } else {
+                want = base_pattern(base_state);
+            }
+        }
 
-        case LED_STATE_THREAD_CONNECTING:
-            // Slow blink: 500ms on, 1500ms off (2000ms period)
-            led_on = (now % 2000) < 500;
-            break;
+        if (want != shown || (want == oneshot && seq != shown_seq)) {
+            shown = want;
+            shown_seq = seq;
+            started = now;
+        }
 
-        case LED_STATE_THREAD_CONNECTED:
-            led_on = true;
-            break;
-
-        case LED_STATE_FAULT:
-            // Very rapid blink: 100ms on, 100ms off (200ms period)
-            led_on = (now % 200) < 100;
-            break;
-
-        case LED_STATE_IDENTIFY:
-            // Asymmetric blink: 100ms on, 900ms off (1000ms period)
-            // Distinct short flash with long gap — used for Matter Identify
-            led_on = (now % 1000) < 100;
-            break;
+        bool done = false;
+        bool led_on = led_pattern_level(&LED_PATTERNS[shown], now - started, &done);
+        if (done && shown == oneshot) {
+            // Clear it only if no newer one-shot arrived meanwhile.
+            portENTER_CRITICAL(&s_oneshot_mux);
+            if (s_oneshot_seq == seq) {
+                s_oneshot = LED_PAT_COUNT;
+            }
+            portEXIT_CRITICAL(&s_oneshot_mux);
+            continue;  // Pick the next layer now, without a tick of stale level
         }
 
         gpio_set_level(STATUS_LED_GPIO, led_on ? LED_ON_LEVEL : LED_OFF_LEVEL);
-        vTaskDelay(pdMS_TO_TICKS(period_ms));
+        vTaskDelay(pdMS_TO_TICKS(LED_TICK_MS));
     }
+}
+
+static void oneshot_start(led_pattern_id_t id)
+{
+    portENTER_CRITICAL(&s_oneshot_mux);
+    s_oneshot = id;
+    s_oneshot_seq++;
+    portEXIT_CRITICAL(&s_oneshot_mux);
 }
 
 esp_err_t status_led_init(void)
@@ -160,6 +213,28 @@ void status_led_stop_identify(void)
         ESP_LOGI(TAG, "Identify stop called but not identifying");
     }
     identify_active = false;
+}
+
+void status_led_set_hint(led_hint_t h)
+{
+    hint = h;
+}
+
+void status_led_flash_press(void)
+{
+    oneshot_start(LED_PAT_PRESS);
+}
+
+void status_led_flash_refused(void)
+{
+    ESP_LOGI(TAG, "Refused");
+    oneshot_start(LED_PAT_REFUSED);
+}
+
+void status_led_flash_accepted(void)
+{
+    ESP_LOGI(TAG, "Accepted");
+    oneshot_start(LED_PAT_ACCEPTED);
 }
 
 void status_led_set_fault(bool active)

@@ -36,7 +36,7 @@ This page explains how the firmware protects the load and the device, how it mea
 | Welded relay | 1PM Gen4 | 0.5 A or more flowing 5s after the relay was switched off | Alert only | Current stops, or the next On/Off |
 | Meter lost | 1PM Gen4 | No valid reading from the power meter for 5s | Alert only; the relay keeps working | Automatic |
 
-Every trip turns the relay off first and then reports it: the OnOff state in your controller changes to off, and a hardware fault is raised (see [Seeing faults in Home Assistant](#seeing-faults-in-home-assistant)). The status LED flashes rapidly (100ms on, 100ms off) while any fault is active.
+Every trip turns the relay off first and then reports it: the OnOff state in your controller changes to off, and a hardware fault is raised (see [Seeing faults in Home Assistant](#seeing-faults-in-home-assistant)). The status LED flashes rapidly (100ms on, 100ms off) while any fault is active. A turn-on that a protection refuses shows three quick flashes instead of switching; see [Button, Switch and LED](BUTTON-AND-LED.md).
 
 ---
 
@@ -99,7 +99,7 @@ While over temperature, turn-on is refused. If no sensor gives a usable reading 
 
 ## Resetting a trip
 
-- **Overcurrent** is latched. Any of these clears it: an On command from a controller, a Toggle from off, a press of the device button, or a flip of the wall switch. Removing power clears it too. A software restart (a crash, a watchdog reset, a firmware update) does **not**: the latch survives in memory that keeps its contents across a restart, so a reboot can never re-energize a tripped load, even with Power-On Behavior set to On.
+- **Overcurrent** is latched. Any of these clears it: an On command from a controller, a Toggle from off, a tap of the device button that turns it on (it acts when you let go), or a flip of the wall switch. Removing power clears it too. A software restart (a crash, a watchdog reset, a firmware update) does **not**: the latch survives in memory that keeps its contents across a restart, so a reboot can never re-energize a tripped load, even with Power-On Behavior set to On.
 - **Overvoltage, over-temperature and sensor faults** clear themselves once the condition is gone.
 - **After any trip,** turn-on is refused for 2 seconds. This keeps a wall switch or an automation from chattering the relay against a fault that is still present.
 

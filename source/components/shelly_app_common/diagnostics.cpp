@@ -297,6 +297,11 @@ void shelly_app_started(void)
     s_started = true;
     // Publish anything raised during boot, before Matter could take it.
     schedule_publish();
+    {
+        esp_matter::lock::ScopedChipStackLock lock(portMAX_DELAY);
+        shelly_led_refresh();
+    }
+    shelly_ui_matter_started();
 
     if (xTaskCreate(health_task, "health", HEALTH_TASK_STACK_SIZE, nullptr, 3, nullptr) != pdPASS) {
         // Without the health task a new image is never confirmed and rolls

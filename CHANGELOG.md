@@ -11,6 +11,8 @@ Each firmware variant versions independently, and releases are grouped by device
 Light, Outlet and Opener 2.2.0; Light Switch 2.3.0. Robustness release: shared driver components, automatic rollback, a liveness watchdog, hardware-fault reporting, and fixes for pin hold, switch glitches and NVS recovery. Updates over Matter OTA without re-pairing.
 
 #### Added
+- Stock Shelly button gestures with LED feedback. Tap to toggle, press 3 times to open a Matter pairing window (3 minutes when paired, 15 when not), hold 10 s to factory reset, hold past 20 s to cancel. Nothing happens while the button is held: the LED shows what releasing will do (a ½ s blink at 5 s, a ¼ s blink at 10 s), and refused or accepted actions show their own flashes. The full specification, checked against the code by the host tests, is [Button, Switch and LED](docs/BUTTON-AND-LED.md).
+- The pairing blink also shows when a pairing window is open on a paired device, and a short flash every 2 s shows an unpaired device whose pairing window has closed (press 3 times to reopen it; no power cycle needed).
 - Automatic rollback. A new firmware image confirms itself after running for 60 seconds with the Matter stack responsive; one that crashes, hangs or restarts before then is rolled back by the bootloader. Needs a bootloader from this release or later (installed by the web UI or UART, never by Matter OTA), and does not protect the update from an older release. See [Updating](docs/UPDATING.md).
 - Liveness watchdog. A health task feeds the task watchdog only while the Matter thread stays responsive; if the thread is stuck for 30 seconds, the device reboots within the 60-second watchdog timeout.
 - Hardware faults and boot reason in General Diagnostics. `ActiveHardwareFaults` and `BootReason` on the root endpoint, and a `HardwareFaultChange` event. Over-temperature reports ResettableOverTemp; a missing temperature sensor reports Sensor. Watchdog and panic restarts report SoftwareWatchdogReset and SoftwareReset instead of Unspecified. In Home Assistant 2026.7.0 or later the faults appear as a "Hardware faults" sensor that is disabled by default. See [Protection and Metering](docs/PROTECTION.md).
@@ -18,12 +20,15 @@ Light, Outlet and Opener 2.2.0; Light Switch 2.3.0. Robustness release: shared d
 - Build-time reversibility check. The build fails if secure boot, flash encryption, eFuse anti-rollback or a ROM download lockout is enabled, if the partition table differs from the stock layout, or if any eFuse-writing function is linked (`scripts/check-reversibility.py`).
 
 #### Changed
+- A tap toggles when the button is released (about 0.3 s later), instead of on press. Holding the button no longer switches the load.
+- A turn-on the relay refuses (over-temperature, failed temperature sensor, protection) now shows three quick flashes instead of doing nothing visible.
 - The drivers moved into shared components under `source/components/`, used by every device and variant. Pins moved from source `#define`s to a "Shelly board" Kconfig menu in each variant. The Matter composition, endpoint ids and stored data are unchanged, so a Matter OTA preserves commissioning.
 - Over-temperature now clears below 65°C instead of as soon as the die drops below 75°C, so a device at the threshold no longer flaps.
 - A temperature sensor that cannot be read (install failure, or three failed reads in a row) raises a Sensor fault and refuses turn-on until a reading returns. It used to be ignored silently.
 - Button presses are handled on their own task instead of the ESP timer task, and the timer task stack is 6144 bytes.
 
 #### Fixed
+- Factory reset fired after about 1.5 s instead of the documented 10 s. The configured 10000 ms was outside the button driver's allowed range, so the driver's 1500 ms default applied, and the same press also toggled the relay. Gesture timing is now the firmware's own.
 - Relay and LED pins held by the stock firmware. Stock firmware can leave the relay and LED pads latched, and a held pad ignores writes until power is removed. The firmware now releases the hold at boot, after first driving the pin to its safe level.
 - Wall switch glitches. A spike that returns the SW input to its previous level no longer counts as a flip; only a real change of the debounced level does.
 - NVS boot loop. If the NVS partition is full or was written by a newer NVS format, it is erased and initialized again, and the device comes back up ready to commission, instead of failing on every boot.
@@ -165,6 +170,8 @@ First release of the Light Switch variant, contributed by [Tomas McGuinness](htt
 The robustness changes of Shelly 1 Gen4 2.2.0, on the Mini. Updates over Matter OTA without re-pairing.
 
 #### Added
+- Stock Shelly button gestures with LED feedback. Tap to toggle, press 3 times to open a Matter pairing window (3 minutes when paired, 15 when not), hold 10 s to factory reset, hold past 20 s to cancel. Nothing happens while the button is held: the LED shows what releasing will do (a ½ s blink at 5 s, a ¼ s blink at 10 s), and refused or accepted actions show their own flashes. The full specification, checked against the code by the host tests, is [Button, Switch and LED](docs/BUTTON-AND-LED.md).
+- The pairing blink also shows when a pairing window is open on a paired device, and a short flash every 2 s shows an unpaired device whose pairing window has closed (press 3 times to reopen it; no power cycle needed).
 - Automatic rollback. A new firmware image confirms itself after running for 60 seconds with the Matter stack responsive; one that crashes, hangs or restarts before then is rolled back by the bootloader. Needs a bootloader from this release or later (installed by the web UI or UART, never by Matter OTA), and does not protect the update from an older release. See [Updating](docs/UPDATING.md).
 - Liveness watchdog. A health task feeds the task watchdog only while the Matter thread stays responsive; if the thread is stuck for 30 seconds, the device reboots within the 60-second watchdog timeout.
 - Hardware faults and boot reason in General Diagnostics. `ActiveHardwareFaults` and `BootReason` on the root endpoint, and a `HardwareFaultChange` event. Over-temperature reports ResettableOverTemp; a missing temperature sensor reports Sensor. Watchdog and panic restarts report SoftwareWatchdogReset and SoftwareReset instead of Unspecified. In Home Assistant 2026.7.0 or later the faults appear as a "Hardware faults" sensor that is disabled by default. See [Protection and Metering](docs/PROTECTION.md).
@@ -172,12 +179,15 @@ The robustness changes of Shelly 1 Gen4 2.2.0, on the Mini. Updates over Matter 
 - Build-time reversibility check. The build fails if secure boot, flash encryption, eFuse anti-rollback or a ROM download lockout is enabled, if the partition table differs from the stock layout, or if any eFuse-writing function is linked (`scripts/check-reversibility.py`).
 
 #### Changed
+- A tap toggles when the button is released (about 0.3 s later), instead of on press. Holding the button no longer switches the load.
+- A turn-on the relay refuses (over-temperature, failed temperature sensor, protection) now shows three quick flashes instead of doing nothing visible.
 - The drivers moved into shared components under `source/components/`, used by every device and variant. Pins moved from source `#define`s to a "Shelly board" Kconfig menu in each variant. The Matter composition, endpoint ids and stored data are unchanged, so a Matter OTA preserves commissioning.
 - Over-temperature now clears below 65°C instead of as soon as the die drops below 75°C, so a device at the threshold no longer flaps.
 - A temperature sensor that cannot be read (install failure, or three failed reads in a row) raises a Sensor fault and refuses turn-on until a reading returns. It used to be ignored silently.
 - Button presses are handled on their own task instead of the ESP timer task, and the timer task stack is 6144 bytes.
 
 #### Fixed
+- Factory reset fired after about 1.5 s instead of the documented 10 s. The configured 10000 ms was outside the button driver's allowed range, so the driver's 1500 ms default applied, and the same press also toggled the relay. Gesture timing is now the firmware's own.
 - Relay and LED pins held by the stock firmware. Stock firmware can leave the relay and LED pads latched, and a held pad ignores writes until power is removed. The firmware now releases the hold at boot, after first driving the pin to its safe level.
 - Wall switch glitches. A spike that returns the SW input to its previous level no longer counts as a flip; only a real change of the debounced level does.
 - NVS boot loop. If the NVS partition is full or was written by a newer NVS format, it is erased and initialized again, and the device comes back up ready to commission, instead of failing on every boot.
@@ -213,6 +223,8 @@ The Light Switch variant on the Shelly 1 Mini Gen4, at parity with the 1 Gen4 Li
 First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: built and unit-tested, not yet verified on hardware.** See the [1PM checklist](docs/FLASHING.md#shelly-1pm-gen4-checklist) before flashing.
 
 #### Added
+- Stock Shelly button gestures with LED feedback. Tap to toggle, press 3 times to open a Matter pairing window (3 minutes when paired, 15 when not), hold 10 s to factory reset, hold past 20 s to cancel. Nothing happens while the button is held: the LED shows what releasing will do (a ½ s blink at 5 s, a ¼ s blink at 10 s), and refused or accepted actions show their own flashes. The full specification, checked against the code by the host tests, is [Button, Switch and LED](docs/BUTTON-AND-LED.md).
+- The pairing blink also shows when a pairing window is open on a paired device, and a short flash every 2 s shows an unpaired device whose pairing window has closed (press 3 times to reopen it; no power cycle needed).
 - Latching relay presented as a Matter On/Off Plug-in Unit, on the 1PM's GPIO map: relay GPIO4, button GPIO1, wall switch input GPIO10, status LED GPIO11.
 - Power metering from the BL0942 meter (UART1, 9600 baud) as the Matter Electrical Sensor device type on the outlet endpoint: active power, voltage, current and frequency (Electrical Power Measurement, AC), and imported cumulative energy (Electrical Energy Measurement). Metering is advertised only once the device has seen AC mains.
 - Energy total saved to flash every 15 minutes or 100 Wh, continuing across restarts and firmware updates.

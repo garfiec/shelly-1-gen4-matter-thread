@@ -57,6 +57,23 @@ esp_err_t shelly_nvs_init(void)
     return err;
 }
 
+void shelly_led_refresh(void)
+{
+    // Called on the Matter thread, or with the CHIP stack lock held.
+    chip::Server &server = chip::Server::GetInstance();
+    led_state_t state;
+    if (server.GetCommissioningWindowManager().IsCommissioningWindowOpen()) {
+        state = LED_STATE_BLE_ADVERTISING;
+    } else if (server.GetFabricTable().FabricCount() == 0) {
+        state = LED_STATE_UNPAIRED_IDLE;
+    } else if (chip::DeviceLayer::ConnectivityMgr().IsThreadAttached()) {
+        state = LED_STATE_THREAD_CONNECTED;
+    } else {
+        state = LED_STATE_THREAD_CONNECTING;
+    }
+    status_led_set_state(state);
+}
+
 void shelly_app_event_cb(const chip::DeviceLayer::ChipDeviceEvent *event, intptr_t arg)
 {
     switch (event->Type) {
@@ -65,23 +82,14 @@ void shelly_app_event_cb(const chip::DeviceLayer::ChipDeviceEvent *event, intptr
         break;
 
     case chip::DeviceLayer::DeviceEventType::kThreadStateChange:
-        ESP_LOGI(TAG, "Thread state change");
-        if (chip::DeviceLayer::ConnectivityMgr().IsThreadAttached()) {
-            ESP_LOGI(TAG, "Thread is attached");
-            status_led_set_state(LED_STATE_THREAD_CONNECTED);
-        } else {
-            ESP_LOGI(TAG, "Thread is NOT attached");
-            // Only switch to CONNECTING if we're not still advertising
-            // (avoid overwriting the rapid-blink state during initial setup)
-            if (chip::Server::GetInstance().GetFabricTable().FabricCount() > 0) {
-                status_led_set_state(LED_STATE_THREAD_CONNECTING);
-            }
-        }
+        ESP_LOGI(TAG, "Thread is %sattached", chip::DeviceLayer::ConnectivityMgr().IsThreadAttached() ? "" : "NOT ");
+        shelly_led_refresh();
         break;
 
     case chip::DeviceLayer::DeviceEventType::kCommissioningComplete:
         ESP_LOGI(TAG, "Commissioning complete");
         MEMORY_PROFILER_DUMP_HEAP_STAT("commissioning complete");
+        shelly_led_refresh();
         break;
 
     case chip::DeviceLayer::DeviceEventType::kFailSafeTimerExpired:
@@ -99,18 +107,14 @@ void shelly_app_event_cb(const chip::DeviceLayer::ChipDeviceEvent *event, intptr
     case chip::DeviceLayer::DeviceEventType::kCommissioningWindowOpened:
         ESP_LOGI(TAG, "Commissioning window opened");
         MEMORY_PROFILER_DUMP_HEAP_STAT("commissioning window opened");
-        // Only show BLE advertising LED if device is truly uncommissioned.
-        // Commissioned devices may open windows for Multi-Admin pairing.
-        // In that case, preserve the connected state to avoid confusing users.
-        if (chip::Server::GetInstance().GetFabricTable().FabricCount() == 0) {
-            status_led_set_state(LED_STATE_BLE_ADVERTISING);
-        } else {
-            ESP_LOGI(TAG, "Device already commissioned, keeping current LED state");
-        }
+        // The pairing blink shows whenever a window is open, including one
+        // opened on a paired device for a second ecosystem.
+        shelly_led_refresh();
         break;
 
     case chip::DeviceLayer::DeviceEventType::kCommissioningWindowClosed:
         ESP_LOGI(TAG, "Commissioning window closed");
+        shelly_led_refresh();
         break;
 
     case chip::DeviceLayer::DeviceEventType::kFabricRemoved: {
@@ -127,6 +131,7 @@ void shelly_app_event_cb(const chip::DeviceLayer::ChipDeviceEvent *event, intptr
                 }
             }
         }
+        shelly_led_refresh();
         break;
     }
 
@@ -251,27 +256,29 @@ void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook)
     s_local_toggle_hook = hook;
 }
 
-void shelly_onoff_toggle(uint16_t endpoint_id)
+bool shelly_onoff_toggle(uint16_t endpoint_id)
 {
     if (!shelly_app_is_started() || endpoint_id == 0) {
-        return;
+        return false;
     }
     // Read, hook and write under one lock, so a Matter command cannot
     // change the value between the read and the toggle.
     lock::ScopedChipStackLock lock(portMAX_DELAY);
     attribute_t *attribute = attribute::get(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id);
     if (attribute == nullptr) {
-        return;
+        return false;
     }
     esp_matter_attr_val_t val = esp_matter_invalid(nullptr);
     if (attribute::get_val(attribute, &val) != ESP_OK) {
-        return;
+        return false;
     }
     if (s_local_toggle_hook != nullptr) {
         s_local_toggle_hook(val.val.b);
     }
     val.val.b = !val.val.b;
-    attribute::update(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &val);
+    // The PRE_UPDATE callback drives the relay; its refusal (thermal
+    // lockout, protection) comes back here and leaves the attribute as is.
+    return attribute::update(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &val) == ESP_OK;
 }
 
 void shelly_onoff_set(uint16_t endpoint_id, bool on)

@@ -21,16 +21,18 @@ This guide covers pairing a freshly flashed Shelly Gen4 device to your smart hom
 
 ## Status LED reference
 
-The LED follows Shelly's standard convention. A solid LED means connected and working.
+> **Button quick card.** Tap: on/off · Press 3×: pairing · Hold 5 s: Wi-Fi mode · Hold 10 s: factory reset · Keep holding past 20 s: cancel
 
-| LED pattern | Timing | Meaning |
-|---|---|---|
-| Off | n/a | Device starting up |
-| Rapid blink | ~200ms on, 200ms off | BLE advertising, ready for commissioning |
-| Slow blink | ~1s on, 1s off | Joining Thread network |
-| Solid on | Continuous | Connected and operational |
-| Identify blink | 100ms on, 900ms off | Identify command active |
-| Fault flash | 100ms on, 100ms off | A hardware fault is active, such as over-temperature or a protection trip. See [Protection and Metering](PROTECTION.md). Identify still shows over it. A Shelly 1PM Gen4 on bench power shows this too, because its power meter has no mains to measure; it clears once installed. |
+The complete button and LED specification is [Button, Switch and LED](BUTTON-AND-LED.md): every gesture in every state, and every LED pattern. The patterns you'll see while pairing:
+
+| LED pattern | Meaning |
+|---|---|
+| Off | Device starting up |
+| Rapid blink (200 ms on, 200 ms off) | Pairing window open, ready to commission |
+| Short flash every 2 s | Not paired, and the pairing window has closed. Press the button 3 times to open it again. |
+| Slow blink (500 ms on, 1500 ms off) | Joining the Thread network |
+| Solid on | Connected and working |
+| Very fast blink (100 ms on, 100 ms off) | A hardware fault is active. See [Protection and Metering](PROTECTION.md). |
 
 ---
 
@@ -84,7 +86,7 @@ Matter lets one device belong to several ecosystems at the same time. This is ca
 4. In the second ecosystem's app, start adding a Matter device and enter that temporary code, not the original setup code printed above.
 5. Repeat for any further ecosystems.
 
-The status LED stays solid through this process. The device is already on Thread, so it does not return to the BLE advertising blink when the pairing window opens.
+While the pairing window is open the status LED shows the rapid pairing blink, and it returns to solid when the window closes. You can also open a 3-minute window from the device itself: press the button 3 times.
 
 ---
 
@@ -120,13 +122,14 @@ If Home Assistant's Matter integration hangs during commissioning or shows "sett
 
 ## Factory reset
 
-Hold the onboard relay button for several seconds. On this firmware that clears the device's Matter commissioning and returns it to BLE commissioning mode. It does not restore the original Shelly firmware or factory state; the Automatous firmware stays installed, and going back to stock requires the UART backup (see [Reversibility](REVERSIBILITY.md)). The LED returns to the rapid blink pattern from the [status LED reference](#status-led-reference), which confirms the reset worked. Remove the device from any ecosystems you added it to before re-commissioning.
+Hold the onboard button for 10 seconds. After 5 seconds the LED blinks every ½ second, and after 10 seconds every ¼ second. Let go while it blinks every ¼ second. (Keep holding past 20 seconds to cancel.) On this firmware that clears the device's Matter commissioning and returns it to BLE commissioning mode. It does not restore the original Shelly firmware or factory state; the Automatous firmware stays installed, and going back to stock requires the UART backup (see [Reversibility](REVERSIBILITY.md)). The LED gives one long flash, the device restarts, and the LED returns to the rapid pairing blink from the [status LED reference](#status-led-reference), which confirms the reset worked. Within 60 seconds of a firmware update the reset is refused (three quick flashes); wait a minute and try again. See [Button, Switch and LED](BUTTON-AND-LED.md) for every case. Remove the device from any ecosystems you added it to before re-commissioning.
 
 ---
 
 ## Related documentation
 
 - [README](../README.md) — project overview and quick start
+- [Button, Switch and LED](BUTTON-AND-LED.md) — every gesture, every state, every LED pattern
 - [Why Matter over Thread](WHY.md) — the rationale for Matter over Thread
 - [Flashing Guide](FLASHING.md) — wiring, backing up stock firmware, and flashing
 - [Reversibility](REVERSIBILITY.md) — warranty, factory keys, and how reversible flashing is

@@ -70,7 +70,13 @@ The fastest way to install this firmware is the Shelly web UI, over your network
 
 > ⚠️ **The web UI flash is effectively one-way.** The web UI cannot read the chip in order to make the full-chip backup that restores the device to a fully functional factory state, including the keys that enable Shelly Cloud and official OTA. This path also writes a permanent marker to the chip's eFuse. If you want the option to return to stock, [back up over UART](#2-back-up-the-original-shelly-firmware) first, or accept that the change is permanent. See [Reversibility](REVERSIBILITY.md).
 
-> **The device must be in its normal WiFi mode**, reachable on your WiFi network, and running recent stock firmware (verified on 1.7.0, 1.7.5, and 2.0.0).
+> **The device must be in its normal WiFi mode**, reachable on your WiFi network, and running recent stock firmware (verified on 1.7.0, 1.7.5, and 2.0.0). The Wi-Fi only matters for this install, while stock firmware is running. Once this firmware is installed, the device uses no Wi-Fi (apart from the optional Wi-Fi maintenance mode, see [Updating](UPDATING.md)): you pair it over Bluetooth and it then runs on Thread.
+
+**Getting stock firmware onto your Wi-Fi.** Skip this if the Shelly is already on your network.
+1. A new or reset Shelly broadcasts its own setup network. Its name starts with "shelly" and ends with part of the MAC address. Join it from a laptop or phone and open `http://192.168.33.1`.
+2. In the web UI's Wi-Fi settings, enter your home network's name and password and save. The Shelly joins your network.
+3. Reconnect your laptop or phone to your home network. Find the Shelly's new IP address in your router's device list or the Shelly app.
+4. Open `http://<device-ip>` to reach the same web UI on your network. The slot check below needs this, and so does any stock update, which the Shelly downloads from the internet.
 
 > **Stock must be running from its second app slot.** The install only completes when the stock firmware is running from slot 1; from slot 0 it stops at about 87% and leaves the stock firmware in place, which is harmless. Open `http://<device-ip>/rpc/Shelly.GetDeviceInfo` and check `slot`. Factory units ship on slot 0: if yours reports 0, install any stock firmware update first (it moves stock to slot 1), then install this firmware.
 
@@ -78,7 +84,7 @@ The fastest way to install this firmware is the Shelly web UI, over your network
 2. Open the Shelly's web UI in a browser at its IP address on your network.
 3. In the device's firmware settings, choose to install firmware from a file and select the `.zip` you downloaded.
 4. Confirm the update. The device flashes the new firmware and reboots into BLE commissioning mode, and the LED will rapidly blink. If it does not reboot automatically, remove and reapply power. A full power cycle after the install is good practice in any case: the stock firmware can leave the relay and LED pins latched in their last state until power is removed. This firmware releases them at boot, and a power cycle guarantees it.
-5. [Factory reset](COMMISSIONING.md#factory-reset) the Shelly by holding the button for 10 seconds, then release. The device will reboot and the LED will rapidly blink again, indicating it is ready to commission. ⚠️ Do not skip this step. The previous firmware leaves data on the device that will cause Matter OTA updates to silently fail. Factory reset wipes this data. If you skip it and commission anyway, you will need to factory reset and recommission later to fix OTA updates.
+5. [Factory reset](COMMISSIONING.md#factory-reset) the Shelly by holding the button for 10 seconds, then release while the LED blinks every ¼ second. The LED gives one long flash, the device will reboot and the LED will rapidly blink again, indicating it is ready to commission. ⚠️ Do not skip this step. The previous firmware leaves data on the device that will cause Matter OTA updates to silently fail. Factory reset wipes this data. If you skip it and commission anyway, you will need to factory reset and recommission later to fix OTA updates.
 6. Continue to [Commissioning](COMMISSIONING.md).
 
 ---

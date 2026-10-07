@@ -48,7 +48,8 @@ CONFIG_ENABLE_WIFI_STATION=n
 
 # Button
 CONFIG_BUTTON_PERIOD_TIME_MS=20
-CONFIG_BUTTON_LONG_PRESS_TIME_MS=10000
+# Gesture timing (taps, holds) is button_logic.h, not iot_button:
+# see docs/BUTTON-AND-LED.md.
 
 # Enable chip shell
 CONFIG_ENABLE_CHIP_SHELL=y

@@ -75,7 +75,14 @@ Once the image is loaded, the update is available in two places. Use whichever y
 
 1. Trigger the update from either location above.
 2. The device downloads over Thread, writes its inactive slot, verifies, and reboots into the new firmware. If the update does not appear right away, the device queries on its own timer; power-cycling it prompts an immediate check.
-3. The device comes back reporting the new version, and the server then offers nothing further. A bad image rolls back to the previous slot. A failed update does not brick a commissioned device.
+3. The device comes back reporting the new version, and the server then offers nothing further. A download that fails verification is never booted, and the device keeps running its current firmware.
+
+> **Automatic rollback.** From the releases that include it (Shelly 1 Gen4 Light, Outlet and Opener 2.2.0, Light Switch 2.3.0, Shelly 1 Mini Gen4 Outlet 1.1.0, Shelly 1PM Gen4 Outlet 1.0.0), a newly installed image has to prove itself: it confirms itself after running for 60 seconds with the Matter stack responsive. If it crashes, hangs or restarts before then, the device boots the previous firmware again. Two conditions apply:
+>
+> - The device's **bootloader** must support rollback. Only a web UI or UART install writes the bootloader; a Matter OTA never replaces it. A device that has only ever been updated over Matter OTA from an older release keeps its old bootloader, and gets rollback the next time it is installed over the web UI or UART.
+> - The update **from** an older release to one of these is not protected: the older firmware does not mark the new image as on trial.
+>
+> Any restart in the first 60 seconds after an update, including a power cut, counts as a failure and rolls back. Leave the device powered for a minute after an update.
 
 > 💡 **One image updates every matching device.** The provider offers the stored image by vendor and product ID; a single `.ota` updates every device of that variant on your Thread network. Publish once, and each matching device picks it up the next time it checks in.
 
@@ -101,6 +108,7 @@ If you build from source and have a UART adapter on the device, `idf.py flash` u
 - [Reversibility](REVERSIBILITY.md) — warranty, factory keys, and how reversible flashing is
 - [Commissioning](COMMISSIONING.md) — pairing the device and reading the status LED
 - [Power Consumption](POWER.md) — measured draw and the Thread Router design choice
+- [Protection and Metering](PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults
 - [Building from Source](BUILDING.md) — compiling the firmware yourself
 - [GPIO Map](GPIO.md) — ESP-Shelly-C68F pin assignments for Gen4 devices
 - [Certification](CERTIFICATION.md) — uncertified status and test credentials

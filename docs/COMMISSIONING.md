@@ -30,6 +30,7 @@ The LED follows Shelly's standard convention. A solid LED means connected and wo
 | Slow blink | ~1s on, 1s off | Joining Thread network |
 | Solid on | Continuous | Connected and operational |
 | Identify blink | 100ms on, 900ms off | Identify command active |
+| Fault flash | 100ms on, 100ms off | A hardware fault is active, such as over-temperature or a protection trip. See [Protection and Metering](PROTECTION.md). Identify still shows over it. A Shelly 1PM Gen4 on bench power shows this too, because its power meter has no mains to measure; it clears once installed. |
 
 ---
 
@@ -131,6 +132,7 @@ Hold the onboard relay button for several seconds. On this firmware that clears 
 - [Reversibility](REVERSIBILITY.md) — warranty, factory keys, and how reversible flashing is
 - [Updating](UPDATING.md) — keeping a device current after flashing
 - [Power Consumption](POWER.md) — measured draw and the Thread Router design choice
+- [Protection and Metering](PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults
 - [Building from Source](BUILDING.md) — compiling the firmware yourself
 - [GPIO Map](GPIO.md) — ESP-Shelly-C68F pin assignments for Gen4 devices
 - [Certification](CERTIFICATION.md) — uncertified status and test credentials

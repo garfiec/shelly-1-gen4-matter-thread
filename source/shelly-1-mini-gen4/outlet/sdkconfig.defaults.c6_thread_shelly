@@ -73,3 +73,20 @@ CONFIG_CHIP_PROJECT_CONFIG="main/CHIPProjectConfig.h"
 # Device Identification Options
 # Set a unique variant PID for OTA
 CONFIG_DEVICE_PRODUCT_ID=0x8005
+
+# Robustness
+
+# Roll back a new OTA image that does not confirm itself. The app confirms
+# after 60s of healthy running (shelly_app_common).
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Reboot if the health task stops feeding the task watchdog (the Matter
+# thread is wedged). Only the health task is watched.
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+
+# Timer callbacks update Matter attributes (the Opener pulse, iot_button).
+CONFIG_ESP_TIMER_TASK_STACK_SIZE=6144

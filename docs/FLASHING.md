@@ -31,6 +31,7 @@ Once the firmware is up and running, updates are applied through Home Assistant 
 
 - [Safety warning](#safety-warning)
 - [Hardware revision](#hardware-revision)
+- [Shelly 1PM Gen4 checklist](#shelly-1pm-gen4-checklist)
 - [Flash with the Shelly web UI](#flash-with-the-shelly-web-ui)
 - [Flash with USB-UART](#flash-with-usb-uart)
 - [What you will need](#what-you-will-need)
@@ -46,6 +47,21 @@ Once the firmware is up and running, updates are applied through Home Assistant 
 
 Tested on several Shelly 1 Gen4s and Shelly 1 Mini Gen4s, all hardware revision **v0.1.2** (printed on the PCB). Other revisions should work but have not been verified. If you have a different revision, please [open an issue](../../../issues/new) with your findings.
 
+The Shelly 1PM Gen4 firmware is **experimental and not yet verified on hardware**. Work through the [checklist](#shelly-1pm-gen4-checklist) below before flashing one.
+
+---
+
+## Shelly 1PM Gen4 checklist
+
+The 1PM firmware switches a metered 15 A load and has not run on hardware yet. Its pin map was taken from one unit, so a board that differs could drive the relay from the wrong pin. Do each of these before you flash, and stop at the first one that does not match.
+
+1. **PCB revision.** Open the case and read the revision printed on the board. It must be **v0.1.2**, the revision the [GPIO map](GPIO.md#shelly-1pm-gen4) was taken from. If it is anything else, do not flash; [open an issue](../../../issues/new) with a photo instead.
+2. **Hardware code.** In the stock web UI, open the device information and read the model or app code. The web UI package is built for `S1PMG4`; if your unit reports something else, the web UI will refuse the package, and you should report the code.
+3. **eFuse check (read-only).** With the device in flash mode, run `espefuse.py --chip esp32c6 --port <PORT> summary` and confirm that `SPI_BOOT_CRYPT_CNT` is 0, `SECURE_BOOT_EN` is False and `DIS_DOWNLOAD_MODE` is False. This command only reads. If any of them is set, stop: the chip is locked down and a restore may not be possible.
+4. **Full UART backup.** For the 1PM, the [full 8MB backup](#2-back-up-the-original-shelly-firmware) is required, not optional, and verify it with `verify_flash`. It is your way back if the firmware does not suit your unit.
+5. **Install on mains, then commission.** The meter only appears once the device has seen AC mains. Bench power from the UART adapter is 3.3V DC, so a 1PM commissioned on the bench shows no power metering; after it is installed and restarted on mains the metering appears, and Home Assistant may need to re-interview the device. Commissioning after installation avoids that. On bench power the status LED may also flash very fast (100ms on, 100ms off) instead of the 200ms commissioning blink: that is the meter-lost alert, because the power meter has no mains to measure, and it clears on mains.
+6. **First boot on mains.** If you can watch the serial log, look for `Relay initialized on GPIO4`, `metering: AC present`, `protection: Mains nominal 120 V` and no `Fault raised` lines. See [Protection and Metering](PROTECTION.md) for what each fault means.
+
 ---
 
 ## Flash with the Shelly web UI
@@ -56,10 +72,12 @@ The fastest way to install this firmware is the Shelly web UI, over your network
 
 > **The device must be in its normal WiFi mode**, reachable on your WiFi network, and running recent stock firmware (verified on 1.7.0, 1.7.5, and 2.0.0).
 
+> **Stock must be running from its second app slot.** The install only completes when the stock firmware is running from slot 1; from slot 0 it stops at about 87% and leaves the stock firmware in place, which is harmless. Open `http://<device-ip>/rpc/Shelly.GetDeviceInfo` and check `slot`. Factory units ship on slot 0: if yours reports 0, install any stock firmware update first (it moves stock to slot 1), then install this firmware.
+
 1. Download the web UI package for your device and variant, `automatous-io-{hardware}-{variant}-vX.Y.Z-ota.zip`, from the [latest release](../../../releases/latest). This is the `.zip`, not the `.bin`.
 2. Open the Shelly's web UI in a browser at its IP address on your network.
 3. In the device's firmware settings, choose to install firmware from a file and select the `.zip` you downloaded.
-4. Confirm the update. The device flashes the new firmware and reboots into BLE commissioning mode, and the LED will rapidly blink. If it does not reboot automatically, remove and reapply power. 
+4. Confirm the update. The device flashes the new firmware and reboots into BLE commissioning mode, and the LED will rapidly blink. If it does not reboot automatically, remove and reapply power. A full power cycle after the install is good practice in any case: the stock firmware can leave the relay and LED pins latched in their last state until power is removed. This firmware releases them at boot, and a power cycle guarantees it.
 5. [Factory reset](COMMISSIONING.md#factory-reset) the Shelly by holding the button for 10 seconds, then release. The device will reboot and the LED will rapidly blink again, indicating it is ready to commission. ⚠️ Do not skip this step. The previous firmware leaves data on the device that will cause Matter OTA updates to silently fail. Factory reset wipes this data. If you skip it and commission anyway, you will need to factory reset and recommission later to fix OTA updates.
 6. Continue to [Commissioning](COMMISSIONING.md).
 
@@ -276,6 +294,7 @@ After flashing, remove the GPIO0–GND bridge and power-cycle the Shelly to boot
 - [Commissioning](COMMISSIONING.md) — pairing the device and reading the status LED
 - [Updating](UPDATING.md) — keeping a device current after flashing
 - [Power Consumption](POWER.md) — measured draw and the Thread Router design choice
+- [Protection and Metering](PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults
 - [Building from Source](BUILDING.md) — compiling the firmware yourself
 - [GPIO Map](GPIO.md) — ESP-Shelly-C68F pin assignments for Gen4 devices
 - [Certification](CERTIFICATION.md) — uncertified status and test credentials

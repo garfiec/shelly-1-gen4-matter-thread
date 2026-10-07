@@ -25,6 +25,7 @@
 #include <common_macros.h>
 
 #include <relay.h>
+#include <shelly_app.h>
 
 using namespace chip::app::Clusters;
 using namespace esp_matter;
@@ -53,6 +54,10 @@ esp_err_t app_driver_relay_set_defaults(uint16_t endpoint_id)
     attribute_t *attribute = attribute::get(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id);
     attribute::get_val(attribute, &val);
     err = relay_set(val.val.b);
+    if (err != ESP_OK && val.val.b) {
+        // Turn-on refused (thermal lockout): report the relay as off.
+        shelly_onoff_set(endpoint_id, false);
+    }
 
     return err;
 }

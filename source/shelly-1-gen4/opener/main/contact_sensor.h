@@ -24,9 +24,9 @@
 // Door-position contact sensor on the Shelly 1 Gen4 SW terminal (GPIO10).
 //
 // In the opener variant the SW terminal is a reed/limit switch reporting
-// door state, NOT a wall toggle. On any edge it debounces (50ms) and
-// updates the Matter Boolean State cluster's StateValue on the contact
-// sensor endpoint.
+// door state, NOT a wall toggle. Each debounced change of level (see the
+// shared switch_input module) updates the Matter Boolean State cluster's
+// StateValue on the contact sensor endpoint.
 //
 // StateValue semantics (Matter): true = CLOSED (contact present),
 // false = OPEN. The level->state mapping is set by CONTACT_OPEN_IS_HIGH
@@ -35,7 +35,7 @@
 // HARDWARE NOTE: The Shelly 1 Gen4 PCB has an external pull resistor on
 // GPIO10. Do not enable the internal pullup or pulldown — internal pulls
 // fight the external circuit and prevent the ISR from firing. See
-// contact_sensor.cpp for details.
+// switch_input.cpp for details.
 
 // Initialize the contact sensor input. Configures GPIO10 as an
 // interrupt-driven input and starts the debounce task. Must be called

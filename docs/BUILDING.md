@@ -51,17 +51,29 @@ The repository organizes firmware by product and variant:
 
 ```
 source/
+├── components/          # Shared drivers used by every variant (relay, inputs, LED, thermal,
+│                        # diagnostics, and the 1PM's meter, metering and protection)
 ├── shelly-1-gen4/
 │   ├── light/           # Matter On/Off Light, latching relay (released)
 │   ├── opener/          # Matter On/Off Plug-in Unit + Contact Sensor, momentary pulse (released)
 │   ├── outlet/          # Matter On/Off Plug-in Unit, latching relay, SW kept as a wall toggle (released)
 │   └── light-switch/    # Matter On/Off Light Switch, detached relay + SW input bound to other Matter devices (released)
-└── shelly-1-mini-gen4/
-    ├── outlet/          # Matter On/Off Plug-in Unit, latching relay (released)
-    └── light-switch/    # Matter On/Off Light Switch, detached relay + SW input bound to other Matter devices (released)
+├── shelly-1-mini-gen4/
+│   ├── outlet/          # Matter On/Off Plug-in Unit, latching relay (released)
+│   └── light-switch/    # Matter On/Off Light Switch, detached relay + SW input bound to other Matter devices (released)
+└── shelly-1pm-gen4/
+    └── outlet/          # Matter On/Off Plug-in Unit + Electrical Sensor, power metering and protection (experimental)
 ```
 
-Each variant is a self-contained ESP-IDF project. Build commands run from inside the variant directory. The examples below build the Shelly 1 Gen4 `light` variant; to build a different one, substitute its hardware and variant directories in the `cd` command.
+Each variant is a self-contained ESP-IDF project that also pulls in the shared components from `source/components/`. A variant's pins and board options live in the "Shelly board" menu of its `main/Kconfig.projbuild`. Build commands run from inside the variant directory.
+
+The pure logic in the shared components (the power meter protocol, energy accounting, protection and thermal state machines) has host tests that need only a C compiler, not the container:
+
+```bash
+source/components/test_host/run.sh
+```
+
+Every build also runs `scripts/check-reversibility.py`, which fails the build if the firmware could stop a device from returning to stock. See [Reversibility](REVERSIBILITY.md#what-this-firmware-guarantees). The examples below build the Shelly 1 Gen4 `light` variant; to build a different one, substitute its hardware and variant directories in the `cd` command.
 
 ---
 
@@ -226,6 +238,7 @@ For a first flash, or to install or update through a packaged artifact, see [Bui
 - [Commissioning](COMMISSIONING.md) — pairing the device and reading the status LED
 - [Updating](UPDATING.md) — keeping a device current after flashing
 - [Power Consumption](POWER.md) — measured draw and the Thread Router design choice
+- [Protection and Metering](PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults
 - [GPIO Map](GPIO.md) — ESP-Shelly-C68F pin assignments for Gen4 devices
 - [Certification](CERTIFICATION.md) — uncertified status and test credentials
 - [Roadmap](ROADMAP.md) — current known limitations and planned work

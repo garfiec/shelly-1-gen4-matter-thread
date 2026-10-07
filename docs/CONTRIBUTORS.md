@@ -33,6 +33,7 @@ If your contribution fits that bar and I missed it, open an issue and I will add
 - [Commissioning](COMMISSIONING.md) — pairing the device and reading the status LED
 - [Updating](UPDATING.md) — keeping a device current after flashing
 - [Power Consumption](POWER.md) — measured draw and the Thread Router design choice
+- [Protection and Metering](PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults
 - [Building from Source](BUILDING.md) — compiling the firmware yourself
 - [GPIO Map](GPIO.md) — ESP-Shelly-C68F pin assignments for Gen4 devices
 - [Certification](CERTIFICATION.md) — uncertified status and test credentials

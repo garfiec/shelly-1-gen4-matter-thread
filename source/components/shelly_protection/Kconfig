@@ -1,0 +1,46 @@
+menu "Shelly electrical protection"
+
+    # Only used on boards with a power meter (SHELLY_HAS_BL0942). The
+    # defaults suit the UL-rated Shelly 1PM Gen4 (15 A, 120 V). This is
+    # secondary protection: the home's breaker is the primary protection.
+    # See docs/PROTECTION.md.
+
+    config SHELLY_PROT_RATED_CURRENT_MA
+        int "Rated current (mA)"
+        default 15000
+
+    config SHELLY_PROT_PICKUP_PERCENT
+        int "I²t pickup (% of rated current)"
+        default 110
+        help
+            Heat builds only above this current. The margin covers meter
+            calibration error, so a load at the rated current never trips.
+
+    config SHELLY_PROT_I2T_K_A2S
+        int "I²t trip threshold (A²s)"
+        default 2800
+        help
+            With the defaults: about 54s at 18 A, 12s at 22.5 A, 4.6s at
+            29.7 A (the meter's full scale).
+
+    config SHELLY_PROT_I2T_TAU_S
+        int "I²t cooling time constant (s)"
+        default 300
+
+    config SHELLY_PROT_OV_SUSTAIN_S
+        int "Overvoltage duration before a trip (s)"
+        default 5
+
+    config SHELLY_PROT_OV_RECOVER_S
+        int "Voltage in range before an overvoltage restore (s)"
+        default 30
+
+    config SHELLY_PROT_COOLDOWN_MS
+        int "Turn-on refusal after a trip (ms)"
+        default 2000
+
+    config SHELLY_PROT_METER_LOST_S
+        int "No meter frame before the meter-lost alert (s)"
+        default 5
+
+endmenu

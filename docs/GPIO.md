@@ -44,6 +44,10 @@ Verified: June 2026
 | Power meter (BL0942) | TX GPIO6, RX GPIO7, UART1 |
 | NTC | GPIO3 |
 
+The BL0942 runs at 9600 baud. Its calibration (voltage reference 14462.09548, current reference 253772.51527) and the map above come from one unit measured at 120 V / 60 Hz. The NTC sits in the ground leg of a 10k divider, so it reads a lower voltage as it heats. Its beta (3350) is an estimate.
+
+The UL-listed 1PM Gen4 (15 A, 120 V) has not been confirmed to use the same board. Check that the PCB revision is v0.1.2 before flashing; see the [1PM checklist](FLASHING.md#shelly-1pm-gen4-checklist).
+
 ## Shelly 1 Mini Gen4
 
 Hardware Revision: v0.1.2
@@ -98,6 +102,7 @@ Verified: September 2026
 - [Reversibility](REVERSIBILITY.md) — warranty, factory keys, and how reversible flashing is
 - [Commissioning](COMMISSIONING.md) — pairing the device and reading the status LED
 - [Updating](UPDATING.md) — keeping a device current after flashing
+- [Protection and Metering](PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults
 - [Building from Source](BUILDING.md) — compiling the firmware yourself
 - [Certification](CERTIFICATION.md) — uncertified status and test credentials
 - [Roadmap](ROADMAP.md) — current known limitations and planned work

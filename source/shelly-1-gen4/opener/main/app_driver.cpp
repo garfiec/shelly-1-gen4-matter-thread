@@ -26,6 +26,7 @@
 #include <common_macros.h>
 
 #include <relay.h>
+#include <shelly_app.h>
 
 using namespace chip::app::Clusters;
 using namespace esp_matter;
@@ -100,12 +101,11 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
 
 esp_err_t app_driver_relay_set_defaults(uint16_t endpoint_id)
 {
-    esp_err_t err = ESP_OK;
-    esp_matter_attr_val_t val = esp_matter_invalid(NULL);
-
-    attribute_t *attribute = attribute::get(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id);
-    attribute::get_val(attribute, &val);
-    err = relay_set(val.val.b);
+    // Momentary: the trigger is never asserted at boot. A stored or
+    // StartUpOnOff "on" would otherwise close the relay with no pulse
+    // timer armed to release it. Force the relay and the attribute off.
+    esp_err_t err = relay_set(false);
+    shelly_onoff_set(endpoint_id, false);
 
     return err;
 }

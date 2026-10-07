@@ -9,3 +9,32 @@ menu "Example Configuration"
 
 endmenu
 
+menu "Shelly board"
+
+    # Shelly 1 Gen4 pin map, PCB v0.1.2. See docs/GPIO.md.
+
+    config SHELLY_RELAY_GPIO
+        int "Relay GPIO (active high)"
+        default 5
+
+    config SHELLY_LED_GPIO
+        int "Status LED GPIO"
+        default 15
+
+    config SHELLY_LED_ACTIVE_LOW
+        bool "Status LED is active low"
+        default y
+
+    config SHELLY_BUTTON_GPIO
+        int "Button GPIO"
+        default 4
+
+    config SHELLY_BUTTON_ACTIVE_LOW
+        bool "Button is active low"
+        default y
+
+    config SHELLY_SWITCH_GPIO
+        int "SW terminal GPIO"
+        default 10
+
+endmenu

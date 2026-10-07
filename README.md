@@ -45,6 +45,7 @@ Each supported device has its own firmware builds under [`source/`](source/).
 |---|---|---|
 | Shelly 1 Gen4 | Light, Outlet, Opener, Light Switch | Released |
 | Shelly 1 Mini Gen4 | Outlet, Light Switch | Released |
+| Shelly 1PM Gen4 | Outlet, with power metering | Experimental, not yet verified on hardware |
 
 More Gen4 devices are planned. See the [Roadmap](docs/ROADMAP.md).
 
@@ -61,7 +62,7 @@ Matter device types are declared by the firmware at flash time and cannot be cha
 | Opener | On/Off Plug-in Unit + Contact Sensor | Momentary pulse, roughly 500ms. | Garage door openers, gates, doorbells, and other pulse-activated devices. |
 | Light Switch | On/Off Light + On/Off Light Switch | Latching, but the SW terminal is detached from the relay. | Repurposing the wall switch to control other Matter devices through a binding, while the local relay runs independently. |
 
-All four variants are available for the Shelly 1 Gen4. The Shelly 1 Mini Gen4 ships the Outlet and Light Switch variants. Every variant on both devices includes a temperature sensor endpoint.
+All four variants are available for the Shelly 1 Gen4. The Shelly 1 Mini Gen4 ships the Outlet and Light Switch variants. The Shelly 1PM Gen4 ships the Outlet variant with power and energy metering and secondary electrical protection; see [Protection and Metering](docs/PROTECTION.md). Every variant on every device includes a temperature sensor endpoint and over-temperature protection.
 
 Light and Outlet are electrically identical. Both latch and hold state, and both keep the SW terminal as a physical wall toggle. They differ only in the Matter device type they report, which sets how your smart home app names, displays, and voice-controls the device, as a light or as an outlet. Some apps let you recategorize after pairing. Others fix the icon, label, and automations to the reported type, which cannot change after commissioning. Pick the variant that matches the load you wired, so the controls read the way you expect.
 
@@ -128,6 +129,7 @@ Most of it is in [`docs/`](docs/), with build [`scripts/`](scripts/), the change
 - [Commissioning](docs/COMMISSIONING.md) — pairing the device and reading the status LED
 - [Updating](docs/UPDATING.md) — keeping a device current after flashing
 - [Power Consumption](docs/POWER.md) — measured draw and the Thread Router design choice
+- [Protection and Metering](docs/PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults
 - [Building from Source](docs/BUILDING.md) — compiling the firmware yourself
 - [GPIO Map](docs/GPIO.md) — ESP-Shelly-C68F pin assignments for Gen4 devices
 - [Certification](docs/CERTIFICATION.md) — uncertified status and test credentials

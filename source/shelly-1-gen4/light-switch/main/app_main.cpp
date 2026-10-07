@@ -23,7 +23,6 @@
 
 #include <esp_err.h>
 #include <esp_log.h>
-#include <nvs_flash.h>
 
 #include <esp_matter.h>
 #include <esp_matter_console.h>
@@ -34,18 +33,16 @@
 
 #include <app_priv.h>
 #include <app_reset.h>
+#include <shelly_app.h>
 #include <status_led.h>
 #include <button.h>
 #include <thermal.h>
-#include <switch_input.h>
+#include <switch_binding.h>
 #include <relay.h>
 
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
 #include <platform/ESP32/OpenthreadLauncher.h>
 #endif
-
-#include <app/server/CommissioningWindowManager.h>
-#include <app/server/Server.h>
 
 #ifdef CONFIG_ENABLE_SET_CERT_DECLARATION_API
 #include <esp_matter_providers.h>
@@ -68,8 +65,6 @@ using namespace esp_matter;
 using namespace esp_matter::attribute;
 using namespace esp_matter::endpoint;
 
-constexpr auto k_timeout_seconds = 300;
-
 #ifdef CONFIG_ENABLE_SET_CERT_DECLARATION_API
 extern const uint8_t cd_start[] asm("_binary_certification_declaration_der_start");
 extern const uint8_t cd_end[] asm("_binary_certification_declaration_der_end");
@@ -84,136 +79,6 @@ extern const char decryption_key_end[] asm("_binary_esp_image_encryption_key_pem
 static const char *s_decryption_key = decryption_key_start;
 static const uint16_t s_decryption_key_len = decryption_key_end - decryption_key_start;
 #endif // CONFIG_ENABLE_ENCRYPTED_OTA
-
-static void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
-{
-    switch (event->Type) {
-    case chip::DeviceLayer::DeviceEventType::kInterfaceIpAddressChanged:
-        ESP_LOGI(TAG, "Interface IP Address changed");
-        break;
-    
-    case chip::DeviceLayer::DeviceEventType::kThreadStateChange:
-        ESP_LOGI(TAG, "Thread state change");
-        if (chip::DeviceLayer::ConnectivityMgr().IsThreadAttached()) {
-            ESP_LOGI(TAG, "Thread is attached");
-            status_led_set_state(LED_STATE_THREAD_CONNECTED);
-        } else {
-            ESP_LOGI(TAG, "Thread is NOT attached");
-            // Only switch to CONNECTING if we're not still advertising
-            // (avoid overwriting the rapid-blink state during initial setup)
-            if (chip::Server::GetInstance().GetFabricTable().FabricCount() > 0) {
-                status_led_set_state(LED_STATE_THREAD_CONNECTING);
-            }
-        }
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kCommissioningComplete:
-        ESP_LOGI(TAG, "Commissioning complete");
-        MEMORY_PROFILER_DUMP_HEAP_STAT("commissioning complete");
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kFailSafeTimerExpired:
-        ESP_LOGI(TAG, "Commissioning failed, fail safe timer expired");
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kCommissioningSessionStarted:
-        ESP_LOGI(TAG, "Commissioning session started");
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kCommissioningSessionStopped:
-        ESP_LOGI(TAG, "Commissioning session stopped");
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kCommissioningWindowOpened:
-        ESP_LOGI(TAG, "Commissioning window opened");
-        MEMORY_PROFILER_DUMP_HEAP_STAT("commissioning window opened");
-        // Only show BLE advertising LED if device is truly uncommissioned.
-        // Commissioned devices may open windows for Multi-Admin pairing —
-        // in that case, preserve the connected state to avoid confusing users.
-        if (chip::Server::GetInstance().GetFabricTable().FabricCount() == 0) {
-            status_led_set_state(LED_STATE_BLE_ADVERTISING);
-        } else {
-            ESP_LOGI(TAG, "Device already commissioned, keeping current LED state");
-        }
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kCommissioningWindowClosed:
-        ESP_LOGI(TAG, "Commissioning window closed");
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kFabricRemoved: {
-        ESP_LOGI(TAG, "Fabric removed successfully");
-        if (chip::Server::GetInstance().GetFabricTable().FabricCount() == 0) {
-            chip::CommissioningWindowManager  &commissionMgr = chip::Server::GetInstance().GetCommissioningWindowManager();
-            constexpr auto kTimeoutSeconds = chip::System::Clock::Seconds16(k_timeout_seconds);
-            if (!commissionMgr.IsCommissioningWindowOpen()) {
-                // After removing last fabric, re-open commissioning window via DNS-SD
-                CHIP_ERROR err = commissionMgr.OpenBasicCommissioningWindow(kTimeoutSeconds,
-                                                                            chip::CommissioningWindowAdvertisement::kDnssdOnly);
-                if (err != CHIP_NO_ERROR) {
-                    ESP_LOGE(TAG, "Failed to open commissioning window, err:%" CHIP_ERROR_FORMAT, err.Format());
-                }
-            }
-        }
-        break;
-    }
-
-    case chip::DeviceLayer::DeviceEventType::kFabricWillBeRemoved:
-        ESP_LOGI(TAG, "Fabric will be removed");
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kFabricUpdated:
-        ESP_LOGI(TAG, "Fabric is updated");
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kFabricCommitted:
-        ESP_LOGI(TAG, "Fabric is committed");
-        break;
-
-    case chip::DeviceLayer::DeviceEventType::kBLEDeinitialized:
-        ESP_LOGI(TAG, "BLE deinitialized and memory reclaimed");
-        MEMORY_PROFILER_DUMP_HEAP_STAT("BLE deinitialized");
-        break;
-
-    default:
-        break;
-    }
-}
-
-// This callback is invoked when clients interact with the Identify Cluster.
-// Triggered by controllers (Apple Home, HA, Google Home) when a user wants
-// to physically identify which device is which. The LED enters an asymmetric
-// blink pattern for the duration of the Identify command, then restores.
-static esp_err_t app_identification_cb(identification::callback_type_t type, uint16_t endpoint_id, uint8_t effect_id,
-                                       uint8_t effect_variant, void *priv_data)
-{
-    ESP_LOGI(TAG, "Identification callback: type: %u, effect: %u, variant: %u", type, effect_id, effect_variant);
-
-    switch (type) {
-    case identification::callback_type_t::START:
-        ESP_LOGI(TAG, "Identify START - blinking status LED");
-        status_led_start_identify();
-        break;
-
-    case identification::callback_type_t::STOP:
-        ESP_LOGI(TAG, "Identify STOP - restoring status LED");
-        status_led_stop_identify();
-        break;
-
-    case identification::callback_type_t::EFFECT:
-        // TriggerEffect command - effect_id specifies which effect.
-        // All effects currently map to the basic identify blink.
-        ESP_LOGI(TAG, "Identify EFFECT %u variant %u - using default blink", effect_id, effect_variant);
-        status_led_start_identify();
-        break;
-
-    default:
-        ESP_LOGW(TAG, "Unknown identification callback type: %u", type);
-        break;
-    }
-
-    return ESP_OK;
-}
 
 // This callback is called for every attribute update. The callback implementation shall
 // handle the desired attributes and return an appropriate error code. If the attribute
@@ -232,12 +97,18 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
     return err;
 }
 
+// A button press toggles the OnOff attribute, so Matter sees every change.
+static void app_button_pressed(void *arg)
+{
+    shelly_onoff_toggle(light_endpoint_id);
+}
+
 extern "C" void app_main()
 {
     esp_err_t err = ESP_OK;
 
-    // Initialize the ESP NVS layer
-    nvs_flash_init();
+    // Initialize the ESP NVS layer (erased and re-initialized if unusable)
+    shelly_nvs_init();
 
     // Initialize status LED
     status_led_init();
@@ -247,11 +118,11 @@ extern "C" void app_main()
     // Initialize subsystems. Order matters for safety:
     // relay first so the GPIO is in known-safe state before anything else.
     // thermal second so overtemp protection is active as early as possible.
-    // switch_input and button last for user-facing inputs.
+    // switch_binding and button last for user-facing inputs.
     relay_init();
     thermal_init();
-    switch_input_init();
-    shelly_button_handle_t button_handle = button_init();
+    switch_binding_init();
+    shelly_button_handle_t button_handle = button_init(app_button_pressed, nullptr);
     app_reset_button_register(button_handle);
 
     app_driver_init();
@@ -260,7 +131,7 @@ extern "C" void app_main()
     node::config_t node_config;
 
     // node handle can be used to add/modify other endpoints.
-    node_t *node = node::create(&node_config, app_attribute_update_cb, app_identification_cb);
+    node_t *node = node::create(&node_config, app_attribute_update_cb, shelly_app_identification_cb);
     ABORT_APP_ON_FAILURE(node != nullptr, ESP_LOGE(TAG, "Failed to create Matter node"));
 
     MEMORY_PROFILER_DUMP_HEAP_STAT("node created");
@@ -298,12 +169,18 @@ extern "C" void app_main()
     temperature_endpoint_id = endpoint::get_id(temp_endpoint);
     ESP_LOGI(TAG, "Temperature sensor created with endpoint_id %d", temperature_endpoint_id);
 
+    thermal_set_endpoints(light_endpoint_id, temperature_endpoint_id);
+
+    // Boot reason and hardware faults on the root endpoint's
+    // GeneralDiagnostics. Attributes only; no endpoint or cluster is added.
+    shelly_diagnostics_add_attributes(node);
+
     // Contact Sensor mirrors the wall toggle position on GPIO10, which
     // detached mode otherwise hides from controllers. Created last so
     // existing endpoint ids stay stable for devices upgrading over OTA.
     // Seed the initial state from the current position.
     contact_sensor::config_t contact_config;
-    contact_config.boolean_state.state_value = switch_input_read_state();
+    contact_config.boolean_state.state_value = switch_binding_read_state();
     endpoint_t *contact_endpoint = contact_sensor::create(node, &contact_config, ENDPOINT_FLAG_NONE, nullptr);
     ABORT_APP_ON_FAILURE(contact_endpoint != nullptr, ESP_LOGE(TAG, "Failed to create contact_sensor endpoint"));
 
@@ -336,18 +213,25 @@ extern "C" void app_main()
 #endif
 #endif // CONFIG_ENABLE_SET_CERT_DECLARATION_API
 
+    // The diagnostics provider must be in place before Matter starts: the
+    // GeneralDiagnostics boot event reads it at startup.
+    shelly_diagnostics_install();
+
     // Matter start
-    err = esp_matter::start(app_event_cb);
+    err = esp_matter::start(shelly_app_event_cb);
     ABORT_APP_ON_FAILURE(err == ESP_OK, ESP_LOGE(TAG, "Failed to start Matter, err:%d", err));
 
     MEMORY_PROFILER_DUMP_HEAP_STAT("matter started");
+
+    // Publish boot-time faults, start the watchdog feed and OTA confirmation.
+    shelly_app_started();
 
     // Starting driver with default values
     app_driver_light_set_defaults(light_endpoint_id);
 
     // Publish the actual switch position; the code-driven Boolean State
     // cluster needs an explicit setter call (the config seed doesn't reach it).
-    switch_input_report();
+    switch_binding_report();
 
 #if CONFIG_ENABLE_ENCRYPTED_OTA
     err = esp_matter_ota_requestor_encrypted_init(s_decryption_key, s_decryption_key_len);

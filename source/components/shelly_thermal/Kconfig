@@ -1,0 +1,33 @@
+menu "Shelly thermal protection"
+
+    config SHELLY_THERMAL_DIE_TRIP_C
+        int "Die temperature trip (°C)"
+        default 75
+        help
+            Turn the relay off when the ESP32-C6 die stays above this
+            temperature for SHELLY_THERMAL_SUSTAIN_S seconds. Governs on
+            boards without an NTC, and on NTC boards only while the NTC is
+            open circuit.
+
+    config SHELLY_THERMAL_DIE_CLEAR_C
+        int "Die temperature clear (°C)"
+        default 65
+        help
+            Allow turn-on again once the die drops below this temperature.
+
+    config SHELLY_THERMAL_NTC_TRIP_C
+        int "Board NTC trip (°C)"
+        default 90
+        help
+            Turn the relay off when the board NTC stays above this
+            temperature for SHELLY_THERMAL_SUSTAIN_S seconds.
+
+    config SHELLY_THERMAL_NTC_CLEAR_C
+        int "Board NTC clear (°C)"
+        default 75
+
+    config SHELLY_THERMAL_SUSTAIN_S
+        int "Over-temperature duration before a trip (s)"
+        default 10
+
+endmenu

@@ -16,6 +16,7 @@ This page explains what installing third-party firmware does to a Shelly Gen4 de
 - [UART path, verified recoverable](#uart-path-verified-recoverable)
 - [Web UI path, one-way](#web-ui-path-one-way)
 - [The eFuse marker](#the-efuse-marker)
+- [What this firmware guarantees](#what-this-firmware-guarantees)
 - [Verification log](#verification-log)
 
 ---
@@ -87,6 +88,19 @@ This is confirmed for the Shelly web UI install path. A direct UART flash does n
 
 ---
 
+## What this firmware guarantees
+
+The eFuse marker above is written by Shelly's own updater during a web UI install, before this firmware ever runs. The firmware itself is built so that it cannot make a restore harder:
+
+- **It never writes eFuses.** Every build runs `scripts/check-reversibility.py`, which fails the build if the app or bootloader links any ESP-IDF function that burns eFuses.
+- **No secure boot, flash encryption, eFuse anti-rollback or ROM download lockout.** Each of these burns eFuses, and several would block a UART restore. The build fails if any of them is enabled.
+- **Stock partition layout.** The build fails unless the partition table matches the stock Shelly Gen4 layout exactly. The stock `zb_storage` and `shelly` regions are never touched.
+- **Firmware rollback without eFuses.** A new firmware image that fails to start is rolled back to the previous one (see [Updating](UPDATING.md)). This uses the bootloader's app rollback, which keeps its state in flash, not ESP-IDF's eFuse-based anti-rollback.
+
+Before flashing any device over UART, you can confirm that the chip itself is not locked down. With the device in flash mode, run the read-only `espefuse.py --chip esp32c6 --port <PORT> summary` and check that `SPI_BOOT_CRYPT_CNT` is 0, `SECURE_BOOT_EN` is False and `DIS_DOWNLOAD_MODE` is False. These are also why the web UI package's encryption flag never matters: it only has an effect on a chip whose flash encryption is already on.
+
+---
+
 ## Verification log
 
 A running record of what has been tested, scoped to the exact conditions.
@@ -104,6 +118,7 @@ A running record of what has been tested, scoped to the exact conditions.
 - [Commissioning](COMMISSIONING.md) — pairing the device and reading the status LED
 - [Updating](UPDATING.md) — keeping a device current after flashing
 - [Power Consumption](POWER.md) — measured draw and the Thread Router design choice
+- [Protection and Metering](PROTECTION.md) — over-temperature, overcurrent and overvoltage protection, power metering, and hardware faults
 - [Building from Source](BUILDING.md) — compiling the firmware yourself
 - [GPIO Map](GPIO.md) — ESP-Shelly-C68F pin assignments for Gen4 devices
 - [Certification](CERTIFICATION.md) — uncertified status and test credentials

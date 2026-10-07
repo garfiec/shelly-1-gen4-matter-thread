@@ -30,8 +30,8 @@ if(NOT DEFINED ENV{ESP_MATTER_DEVICE_PATH})
     endif()
 endif(NOT DEFINED ENV{ESP_MATTER_DEVICE_PATH})
 
-set(PROJECT_VER "2.1.0")
-set(PROJECT_VER_NUMBER 131328)
+set(PROJECT_VER "2.2.0")
+set(PROJECT_VER_NUMBER 131584)
 
 set(ESP_MATTER_PATH $ENV{ESP_MATTER_PATH})
 set(MATTER_SDK_PATH ${ESP_MATTER_PATH}/connectedhomeip/connectedhomeip)
@@ -46,9 +46,14 @@ set(EXTRA_COMPONENT_DIRS
     "${MATTER_SDK_PATH}/config/esp32/components"
     "${ESP_MATTER_PATH}/components"
     "${ESP_MATTER_PATH}/device_hal/device"
+    "${CMAKE_CURRENT_LIST_DIR}/../../components"
     ${extra_components_dirs_append})
 
 project(outlet)
+
+# Fail the build if the firmware could stop the device from going back to
+# stock (eFuse writes, secure boot, flash encryption, non-stock partitions).
+include(${CMAKE_CURRENT_LIST_DIR}/../../components/reversibility.cmake)
 
 # WARNING: This is just an example for using key for decrypting the encrypted OTA image
 # Please do not use it as is.

@@ -9,6 +9,7 @@ This guide covers pairing a freshly flashed Shelly Gen4 device to your smart hom
 ## Contents
 
 - [Status LED reference](#status-led-reference)
+- [Your setup code](#your-setup-code)
 - [Before commissioning](#before-commissioning)
 - [Apple Home](#apple-home)
 - [Google Home, Alexa, Home Assistant](#google-home-alexa-home-assistant)
@@ -36,27 +37,48 @@ The complete button and LED specification is [Button, Switch and LED](BUTTON-AND
 
 ---
 
+## Your setup code
+
+Each device has its own Matter setup code, an 11-digit number like `1234-567-8901`. The device makes it the first time it starts, and keeps it through factory resets and updates. Nobody else's device shares it.
+
+There's no sticker for it, so read it from the device before you pair. Either:
+- **In the flashing log.** Right after a UART flash, the serial monitor shows a line like `Matter setup code: 1234-567-8901 (made by this device, NEW on this boot)` at every start.
+- **On the Wi-Fi mode page.** Hold the button 5 s, join the `Shelly-…` network and read the code on the page (see [Updating](UPDATING.md#wi-fi-maintenance-mode)). Then press **Exit**: the device restarts with a 15-minute pairing window.
+
+**Use your own code instead.** On the same page you can enter the 11-digit code from the Shelly sticker (or any valid Matter code), or make a new random one. It is only saved once you press the device's button 3 times within 2 minutes, so someone else on the open network can't change it. Enter the 11-digit number, not the sticker's QR code: the QR names Shelly as the maker, and some controllers refuse a device that reports a different one.
+
+**When the code changes on its own.** The device makes a new code whenever its settings memory is erased: after a full UART reflash, or if the settings memory was unusable and the device had to erase it. Both also remove the device from your controllers. The log and the page always show the current code.
+
+**When it's the shared test code instead.** In these cases the device uses the test code below, which every device running this firmware shares:
+- a build without Wi-Fi mode, which has no page to show another code;
+- if the device couldn't save its own code (it says so in the log and on the page, and tries again at the next start);
+- after an update rolls back to firmware older than this feature.
+
+![Matter setup QR code for the shared test code](images/matter_qrcode_20202021_3840.png)
+
+```
+Shared test code: 3497-011-2332
+```
+
+> This is the ESP-Matter SDK test code. With it, pair devices one at a time: several unpaired devices advertising the same code confuse controllers. See [Certification](CERTIFICATION.md) for what the uncertified warning means.
+
+The code is used whenever a pairing window opens: the one after power-on (unpaired device), 3 presses of the button, and the window that opens after the device is removed from its last controller. Pairings you already have don't depend on it.
+
+---
+
 ## Before commissioning
 
-Commission devices one at a time. Power off or move away any other uncommissioned devices running Automatous firmware while you set each one up. All devices ship with the same pairing code, so a controller can get confused if several are advertising at once. Once a device is commissioned it gets a unique identity on your network. After commissioning, disconnect the UART from the Shelly and install it wherever you need it.
-
-![Matter setup QR code](images/matter_qrcode_20202021_3840.png)
-
-```
-Setup code: 3497-011-2332
-```
-
-> This is the ESP-Matter SDK test setup code, used by every device running this firmware. Once a device is commissioned to your Matter fabric, the setup code is no longer used for authentication, and your Matter ecosystem manages credentials from then on. Multiple uncommissioned devices broadcasting the same setup code is the reason to commission one device at a time. See [Certification](CERTIFICATION.md) for what the uncertified warning means.
+After commissioning, disconnect the UART from the Shelly and install it wherever you need it.
 
 ---
 
 ## Apple Home
 
-Scan the QR code above with the Home app, or enter the setup code manually.
+Enter [your setup code](#your-setup-code) manually.
 
 1. Open the Home app.
 2. Tap the plus button, then Add Accessory.
-3. Scan the QR code above, or tap More Options to enter the setup code manually.
+3. Tap More Options, then enter the setup code.
 4. Press Add Anyway when prompted. This is expected. See [Certification](CERTIFICATION.md) for why.
 5. Name the device and place it in a room.
 
@@ -66,9 +88,9 @@ Scan the QR code above with the Home app, or enter the setup code manually.
 
 ## Google Home, Alexa, Home Assistant
 
-Google Home and Alexa support Matter commissioning through their respective apps. Use setup code `3497-011-2332` or the QR code above when prompted. Google and Alexa hubs have not been directly tested, but the firmware should work with any Matter-compliant hub. Let us know and we will update the compatible hubs section.
+Google Home and Alexa support Matter commissioning through their respective apps. Enter [your setup code](#your-setup-code) when prompted. Google and Alexa hubs have not been directly tested, but the firmware should work with any Matter-compliant hub. Let us know and we will update the compatible hubs section.
 
-Home Assistant commissions through its Matter integration. Use the same setup code or QR code. Because this firmware uses Matter test credentials, Home Assistant's Matter Server needs Test Net DCL enabled before it will commission an uncertified device like this one.
+Home Assistant commissions through its Matter integration. Use the same setup code. Because this firmware uses Matter test credentials, Home Assistant's Matter Server needs Test Net DCL enabled before it will commission an uncertified device like this one.
 
 Turn on **Enable test-net DCL usage** in the Matter Server add-on configuration and restart the add-on. This is the same setting that later lets Home Assistant serve [Matter OTA updates](UPDATING.md), so enabling it now covers both commissioning and updates.
 
@@ -83,10 +105,10 @@ Matter lets one device belong to several ecosystems at the same time. This is ca
 1. Commission the device to your first ecosystem as described above.
 2. In that ecosystem, open the device and choose the option to add it to another platform. In Apple Home this is "Turn On Pairing Mode" in the accessory settings. In Home Assistant it is the share or "Add to another fabric" action on the device page.
 3. The first ecosystem displays a temporary setup code.
-4. In the second ecosystem's app, start adding a Matter device and enter that temporary code, not the original setup code printed above.
+4. In the second ecosystem's app, start adding a Matter device and enter that temporary code, not the device's own setup code.
 5. Repeat for any further ecosystems.
 
-While the pairing window is open the status LED shows the rapid pairing blink, and it returns to solid when the window closes. You can also open a 3-minute window from the device itself: press the button 3 times.
+While the pairing window is open the status LED shows the rapid pairing blink, and it returns to solid when the window closes. You can also open a 3-minute window from the device itself: press the button 3 times. The second ecosystem then asks for [your setup code](#your-setup-code), not a temporary one.
 
 ---
 

@@ -90,6 +90,8 @@ Once the image is loaded, the update is available in two places. Use whichever y
 
 > 💡 **One image updates every matching device.** The provider offers the stored image by vendor and product ID; a single `.ota` updates every device of that variant on your Thread network. Publish once, and each matching device picks it up the next time it checks in.
 
+> **Updating to a release with per-device setup codes.** Your pairings are kept. After the update the device makes its own [setup code](COMMISSIONING.md#your-setup-code), so the shared test code `3497-011-2332` stops working for new pairing windows (3 presses of the button, or adding it to another ecosystem). Read the new code from the Wi-Fi mode page before you need it. If the update rolls back, the older firmware uses the test code again.
+
 ---
 
 ## Wi-Fi maintenance mode
@@ -119,7 +121,7 @@ The hold is refused (three quick flashes) within 60 seconds of an update, becaus
 
 1. On a phone or laptop, join the Wi-Fi network named `Shelly-<model>-<last six digits of the MAC>`, for example `Shelly-S1PMG4-A1B2C3`. It is open, like stock Shelly's setup network: while the mode lasts, anyone within Wi-Fi range can use the page, switch the relay and install firmware built for this model. Enter the mode only when you are about to use it, and press **Exit** when you are done.
 2. The update page usually opens on its own. If not, browse to `http://192.168.33.1`. Your phone may warn that the network has no internet; that is expected.
-3. The page shows the model, variant, firmware version and relay state. Choose the `.ota` file and press **Install**. The LED stays solid while the file uploads and installs.
+3. The page shows the model, variant, firmware version, relay state and [Matter setup code](#matter-setup-code). Choose the `.ota` file and press **Install**. The LED stays solid while the file uploads and installs.
 4. The device checks the file before erasing anything, installs it into its inactive slot, verifies it and restarts into it.
 
 To install an older version of the same variant, tick **Allow installing an older version** first. An image for a different variant of the same hardware (for example Outlet onto a device running Light) installs whatever its version, since each variant has its own version numbers, but it is a different Matter device type: remove the device from your controller and pair it again afterward.
@@ -138,6 +140,12 @@ While the mode lasts:
 - a tap and the page's Toggle still switch the relay, and so does the wall switch on the Light, Outlet, Mini and 1PM (the Opener's contact and the Light Switch's bindings need Matter and are ignored), but controllers only see the relay's state once the device is back in normal mode;
 - Home Assistant shows the device as unavailable;
 - every protection still trips.
+
+### Matter setup code
+
+The page also shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. To change it, enter your own 11-digit code (for example from the Shelly sticker) or press **Make a new random code**, then press the device's button 3 times within 2 minutes. The LED gives one long flash and the page confirms. Until you press, nothing changes; after 2 minutes, on Cancel or when you leave the mode, the change is dropped. The new code applies once the device is back in normal operation. Your existing pairings keep working either way.
+
+The network is open, so anyone nearby can read the code while the mode is on. Changing it needs the button presses, which need the device in hand.
 
 ---
 

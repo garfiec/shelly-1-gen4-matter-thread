@@ -49,8 +49,12 @@ ui_outcome_t ui_decide(ui_input_t input, const ui_state_t *st)
         return st->started ? UI_TOGGLE : UI_REFUSE;
 
     case UI_INPUT_PAIRING:
-        // Pairing needs Matter.
-        return (!st->maintenance && st->started) ? UI_OPEN_PAIRING : UI_REFUSE;
+        if (st->maintenance) {
+            // Pairing needs Matter. In Wi-Fi mode the presses confirm a
+            // setup-code change made on the page, if one is waiting.
+            return st->code_change_pending ? UI_CONFIRM_CODE : UI_REFUSE;
+        }
+        return st->started ? UI_OPEN_PAIRING : UI_REFUSE;
 
     case UI_INPUT_WIFI_MODE:
         if (st->maintenance) {

@@ -38,6 +38,7 @@
 #include <app/server/Server.h>
 
 #include <relay.h>
+#include <shelly_setup_code.h>
 
 using namespace esp_matter;
 
@@ -274,6 +275,7 @@ static ui_state_t current_state(ui_input_t input)
     // otadata read and the lock for taps and the wall switch.
     st.pending_verify = (input == UI_INPUT_WIFI_MODE || input == UI_INPUT_FACTORY_RESET) && image_pending_verify();
     st.ota_busy = input == UI_INPUT_WIFI_MODE && !st.maintenance && ota_download_busy();
+    st.code_change_pending = input == UI_INPUT_PAIRING && st.maintenance && shelly_setup_code_pending(nullptr, nullptr);
     st.switch_role = s_config.switch_role;
     return st;
 }
@@ -380,6 +382,14 @@ static void carry_out(ui_outcome_t outcome)
 
     case UI_DEFER_RESET:
         defer_factory_reset();
+        break;
+
+    case UI_CONFIRM_CODE:
+        if (shelly_setup_code_confirm()) {
+            status_led_flash_accepted();
+        } else {
+            status_led_flash_refused();
+        }
         break;
     }
 }

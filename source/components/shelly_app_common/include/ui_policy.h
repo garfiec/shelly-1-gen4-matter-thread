@@ -54,6 +54,7 @@ typedef struct {
     bool pending_verify;        // Running image not yet confirmed (first 60 s after an update)
     bool ota_busy;              // A Matter OTA download is in progress
     bool maintenance_available; // This build has Wi-Fi maintenance mode
+    bool code_change_pending;   // Maintenance: a setup-code change waits on the page for 3 presses
     ui_switch_role_t switch_role;
 } ui_state_t;
 
@@ -68,6 +69,7 @@ typedef enum {
     UI_EXIT_MAINTENANCE,    // Restart into normal mode
     UI_FACTORY_RESET,       // Factory reset now, through Matter
     UI_DEFER_RESET,         // Record a reset, restart, reset once Matter is up
+    UI_CONFIRM_CODE,        // Save the setup code waiting on the maintenance page
 } ui_outcome_t;
 
 ui_outcome_t ui_decide(ui_input_t input, const ui_state_t *st);

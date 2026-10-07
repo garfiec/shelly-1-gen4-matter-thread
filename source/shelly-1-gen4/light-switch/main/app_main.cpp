@@ -33,6 +33,7 @@
 
 #include <app_priv.h>
 #include <shelly_app.h>
+#include <shelly_setup_code.h>
 #if CONFIG_SHELLY_MAINTENANCE
 #include <maintenance.h>
 #endif
@@ -247,6 +248,8 @@ extern "C" void app_main()
     // The diagnostics provider must be in place before Matter starts: the
     // GeneralDiagnostics boot event reads it at startup.
     shelly_diagnostics_install();
+    // The device's own setup code (docs/COMMISSIONING.md): also before start.
+    shelly_setup_code_install();
 
     // Matter start
     err = esp_matter::start(shelly_app_event_cb);

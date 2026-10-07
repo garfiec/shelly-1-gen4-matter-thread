@@ -71,11 +71,14 @@ The pure logic in the shared components has host tests that need only a C compil
 - the power meter protocol, energy accounting, and the protection and thermal state machines;
 - the button gestures and what each input does in each state;
 - the LED patterns;
-- Wi-Fi maintenance mode's upload check and captive-portal DNS.
+- Wi-Fi maintenance mode's upload check and captive-portal DNS;
+- the Matter setup code: the 11-digit manual code, its check digit and the saved record.
 
 ```bash
 source/components/test_host/run.sh
 ```
+
+The manual-code encoder was cross-checked against CHIP's own generator (`src/setup_payload/python/SetupPayload.py`, in the builder container): `test_setup_code vectors 60` prints random codes to compare.
 
 The same script runs `scripts/check-ui-spec.py`, which fails if [Button, Switch and LED](BUTTON-AND-LED.md) and the code disagree. Change them together (see [CLAUDE.md](../CLAUDE.md)).
 

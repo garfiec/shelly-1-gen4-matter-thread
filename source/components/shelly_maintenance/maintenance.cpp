@@ -46,6 +46,7 @@
 
 #include <relay.h>
 #include <shelly_hw_desc.h>
+#include <shelly_setup_code.h>
 #include <status_led.h>
 
 static const char *TAG = "maintenance";
@@ -272,10 +273,29 @@ static esp_err_t status_get(httpd_req_t *req)
     char version[sizeof(app->version) + 1];
     json_safe(project, sizeof(project), app->project_name);
     json_safe(version, sizeof(version), app->version);
-    char body[256];
+
+    // The setup code in use, and a change waiting for 3 presses.
+    setup_code_t code;
+    bool created = false;
+    bool saved = shelly_setup_code_current(&code, &created);
+    char code_text[SETUP_CODE_FORMATTED_LEN];
+    setup_code_manual_format(code.passcode, code.discriminator, code_text);
+    const char *source = !saved ? "test" : code.source == SETUP_CODE_SOURCE_USER ? "yours" : "generated";
+    setup_code_t staged;
+    uint32_t secs_left = 0;
+    char pending[SETUP_CODE_FORMATTED_LEN + 2] = "null";
+    if (shelly_setup_code_pending(&staged, &secs_left)) {
+        char t[SETUP_CODE_FORMATTED_LEN];
+        setup_code_manual_format(staged.passcode, staged.discriminator, t);
+        snprintf(pending, sizeof(pending), "\"%s\"", t);
+    }
+
+    char body[512];
     snprintf(body, sizeof(body),
-             "{\"hw\":\"%s\",\"variant\":\"%s\",\"version\":\"%s\",\"mac\":\"%s\",\"relay\":%s}",
-             shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false");
+             "{\"hw\":\"%s\",\"variant\":\"%s\",\"version\":\"%s\",\"mac\":\"%s\",\"relay\":%s,"
+             "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,\"pending\":%s,\"pending_secs\":%u}",
+             shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text, source,
+             created ? "true" : "false", pending, (unsigned)secs_left);
     return send_json(req, "200 OK", body);
 }
 
@@ -318,6 +338,54 @@ static int recv_some(httpd_req_t *req, uint8_t *buf, size_t len)
         }
     }
     return HTTPD_SOCK_ERR_TIMEOUT;
+}
+
+// POST /code/set: the owner's 11-digit code, as typed. It waits for 3
+// presses of the button (docs/BUTTON-AND-LED.md, B-26) before it is saved.
+static esp_err_t code_set_post(httpd_req_t *req)
+{
+    touch();
+    char text[40];
+    if (req->content_len == 0 || req->content_len >= sizeof(text)) {
+        return send_result(req, "400 Bad Request", false, "Enter the 11-digit code");
+    }
+    size_t got = 0;
+    while (got < req->content_len) {
+        int n = recv_some(req, (uint8_t *)text + got, req->content_len - got);
+        if (n <= 0) {
+            return send_result(req, "400 Bad Request", false, "The code did not arrive; try again");
+        }
+        got += (size_t)n;
+    }
+    text[got] = '\0';
+    switch (shelly_setup_code_stage_manual(text)) {
+    case SETUP_CODE_OK:
+        return send_result(req, "200 OK", true, "");
+    case SETUP_CODE_ERR_CHECK_DIGIT:
+        return send_result(req, "400 Bad Request", false, "That code has a typo: check each digit");
+    case SETUP_CODE_ERR_LONG_FORM:
+        return send_result(req, "400 Bad Request", false,
+                           "That is the long 21-digit form. Use the 11-digit code (XXXX-XXX-XXXX)");
+    case SETUP_CODE_ERR_PASSCODE:
+        return send_result(req, "400 Bad Request", false, "Matter does not allow that code");
+    case SETUP_CODE_ERR_FORMAT:
+    default:
+        return send_result(req, "400 Bad Request", false, "Enter the 11-digit code, like 1234-567-8901");
+    }
+}
+
+static esp_err_t code_new_post(httpd_req_t *req)
+{
+    touch();
+    shelly_setup_code_stage_random();
+    return send_result(req, "200 OK", true, "");
+}
+
+static esp_err_t code_cancel_post(httpd_req_t *req)
+{
+    touch();
+    shelly_setup_code_cancel();
+    return send_result(req, "200 OK", true, "");
 }
 
 static esp_err_t upload_fail(httpd_req_t *req, const char *status, const char *msg)
@@ -473,6 +541,7 @@ static esp_err_t start_http(void)
     cfg.stack_size = HTTP_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
+    cfg.max_uri_handlers = 10;
     cfg.recv_wait_timeout = 10;
     cfg.send_wait_timeout = 10;
 
@@ -487,6 +556,9 @@ static esp_err_t start_http(void)
         {.uri = "/toggle", .method = HTTP_POST, .handler = toggle_post, .user_ctx = nullptr},
         {.uri = "/exit", .method = HTTP_POST, .handler = exit_post, .user_ctx = nullptr},
         {.uri = "/update", .method = HTTP_POST, .handler = update_post, .user_ctx = nullptr},
+        {.uri = "/code/set", .method = HTTP_POST, .handler = code_set_post, .user_ctx = nullptr},
+        {.uri = "/code/new", .method = HTTP_POST, .handler = code_new_post, .user_ctx = nullptr},
+        {.uri = "/code/cancel", .method = HTTP_POST, .handler = code_cancel_post, .user_ctx = nullptr},
     };
     for (const httpd_uri_t &uri : uris) {
         err = httpd_register_uri_handler(server, &uri);

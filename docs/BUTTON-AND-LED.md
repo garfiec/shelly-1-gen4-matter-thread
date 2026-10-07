@@ -67,7 +67,7 @@ The LED stops showing the device state and shows what releasing now would do. It
 
 ## What the button does
 
-Every gesture in every state. A refused action shows three quick flashes (LED-14). An accepted pairing, Wi-Fi or reset request shows one long flash (LED-15).
+Every gesture in every state. A refused action shows three quick flashes (LED-14). An accepted pairing, Wi-Fi, reset or setup-code request shows one long flash (LED-15).
 
 | ID | State | Gesture | Result | Why |
 |---|---|---|---|---|
@@ -92,9 +92,13 @@ Every gesture in every state. A refused action shows three quick flashes (LED-14
 | B-19 | Normal, built without Wi-Fi mode | Hold 5-10 s | Refused | This build has no Wi-Fi mode |
 | B-20 | Normal, built without Wi-Fi mode | Hold 10-20 s | Factory reset | |
 | B-21 | Wi-Fi maintenance mode | Tap | Toggle, without Matter | The relay switches directly; Home Assistant sees the new state once the device is back in normal mode (P-03) |
-| B-22 | Wi-Fi maintenance mode | 3+ taps | Refused | Pairing needs Matter, which is off in Wi-Fi mode |
+| B-22 | Wi-Fi maintenance mode | 3+ taps | Refused | Pairing needs Matter, which is off in Wi-Fi mode. With a setup-code change waiting on the page, the presses save it instead (B-26) |
 | B-23 | Wi-Fi maintenance mode | Hold 5-10 s | Exit Wi-Fi mode | The same gesture that entered it. An upload in progress is abandoned; nothing is installed |
 | B-24 | Wi-Fi maintenance mode | Hold 10-20 s | Factory reset after a restart | The device restarts into normal mode and resets once Matter starts. An upload in progress is abandoned |
+| B-25 | Wi-Fi mode, code change waiting | Tap | Toggle, without Matter | As B-21. The change keeps waiting |
+| B-26 | Wi-Fi mode, code change waiting | 3+ taps | Save the new setup code | The code set or made on the page (see [Save the new setup code](#what-each-action-does)) is saved and used from the next normal boot. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
+| B-27 | Wi-Fi mode, code change waiting | Hold 5-10 s | Exit Wi-Fi mode | The change is dropped; the old code stays |
+| B-28 | Wi-Fi mode, code change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the saved setup code |
 
 "Normal" covers every normal-mode state not listed separately: paired or not, pairing window open or closed, joining Thread or connected, Identify running, or a hardware fault active.
 
@@ -114,6 +118,8 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 | SW-08 | Light Switch | Normal | Its own use | Sends On/Off to the bound lights; the button still toggles the local relay |
 | SW-09 | Light Switch | Wi-Fi maintenance mode | Ignored | Bindings need Matter |
 
+A setup-code change waiting on the Wi-Fi mode page doesn't change these rows: the wall switch never confirms it.
+
 ## What each action does
 
 **Toggle.** Flips the relay through Matter, so every controller sees the change.
@@ -125,13 +131,13 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 
 **Toggle, without Matter.** The same, in Wi-Fi maintenance mode: the relay switches directly and the same protections apply. The Opener pulses.
 
-**Open pairing.** Opens a Matter pairing window over Bluetooth and Thread, and the LED shows the pairing blink (LED-02).
+**Open pairing.** Opens a Matter pairing window over Bluetooth and Thread, and the LED shows the pairing blink (LED-02). The window takes the device's own setup code (see [Commissioning](COMMISSIONING.md#your-setup-code)).
 - **Paired device:** the window lasts 3 minutes. Use it to add the device to a second ecosystem.
 - **Unpaired device:** it lasts 15 minutes, like the window the device opens by itself at boot. After 15 minutes the device stops advertising (LED-03). Press 3 times to start again; no power cycle needed.
 - **A window already open** restarts with its full time, unless a controller opened it with its own pairing code (Share device, for example): that window is left as it is, so the code the controller shows keeps working.
 - **Refused** while someone is part-way through pairing, so their session is not cut off.
 
-**Enter Wi-Fi mode** (experimental). The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own open Wi-Fi network named `Shelly-<model>-<last six digits of the MAC>`, and the page at `http://192.168.33.1` installs a firmware update. See [Updating](UPDATING.md#wi-fi-maintenance-mode).
+**Enter Wi-Fi mode** (experimental). The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own open Wi-Fi network named `Shelly-<model>-<last six digits of the MAC>`, and the page at `http://192.168.33.1` installs a firmware update and shows the device's Matter setup code. See [Updating](UPDATING.md#wi-fi-maintenance-mode).
 - The relay keeps its state across the restart, apart from a brief off while it reboots. The Opener's trigger always stays off.
 - The mode ends after an upload, on the page's Exit button, with the 5 s hold again, or after 10 minutes with the page closed.
 - Home Assistant shows the device as unavailable until it is back in normal mode.
@@ -139,10 +145,12 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 
 **Exit Wi-Fi mode.** The device restarts into normal mode. The state the relay had in Wi-Fi mode becomes its previous state, and the relay then follows its power-on setting from there (see below): with Previous it keeps that state, and controllers see it once Matter is back.
 
-**Factory reset.** Clears the Matter pairings and the Thread network, then restarts ready to pair (LED-02).
+**Factory reset.** Clears the Matter pairings and the Thread network, then restarts ready to pair (LED-02). The device's setup code stays the same.
 - The firmware stays installed. This is not a return to stock firmware: see [Reversibility](REVERSIBILITY.md).
 - **1PM:** the learned mains voltage is cleared too. The energy total is kept.
 - An overcurrent trip survives the reset. The first On from the new controller, or a tap, clears it.
+
+**Save the new setup code.** On the Wi-Fi mode page you can enter your own 11-digit Matter code (for example the one on the Shelly sticker) or make a new random one. Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15) and the new code applies from the next normal boot. The page shows the waiting code and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, the change is dropped. See [Commissioning](COMMISSIONING.md#your-setup-code).
 
 **Factory reset after a restart.** The device records the request, restarts, and resets as soon as Matter is up. If Matter never starts, the reset does not happen; reflash over UART.
 
@@ -183,7 +191,7 @@ Timings are in milliseconds. "Repeating" patterns loop; "once" patterns play one
 | LED-12 | on 500, off 500, repeating | Held 5-10 s: release for Wi-Fi mode (or to leave it) |
 | LED-13 | on 250, off 250, repeating | Held 10-20 s: release to factory reset |
 | LED-14 | on 100, off 100, on 100, off 100, on 100, off 100, once | Refused (see [What the button does](#what-the-button-does)) |
-| LED-15 | on 600, once | Accepted: pairing opened, Wi-Fi mode or reset starting |
+| LED-15 | on 600, once | Accepted: pairing opened, Wi-Fi mode or reset starting, or setup code saved |
 
 ## Timings
 

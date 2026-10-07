@@ -1,4 +1,5 @@
 idf_component_register(SRCS "app_common.cpp" "diagnostics.cpp" "shelly_ui.cpp" "ui_policy.c" "shelly_hw_desc.c"
+                            "setup_code.c" "shelly_setup_code.cpp"
                        INCLUDE_DIRS "include"
                        PRIV_INCLUDE_DIRS "${ESP_MATTER_PATH}/examples/common/utils"
                        REQUIRES esp_matter

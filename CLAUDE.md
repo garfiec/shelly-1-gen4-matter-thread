@@ -27,7 +27,7 @@ The button, the wall switch (SW) and the status LED are the device's only local 
   - first 60 s after an update (image pending verify);
   - Matter update downloading;
   - built without Wi-Fi mode;
-  - Wi-Fi maintenance mode (including an upload in progress).
+  - Wi-Fi maintenance mode (including an upload in progress, and a setup-code change waiting for 3 presses).
 - **Variants:** Light, Outlet, Mini and 1PM (SW toggles), Opener (SW is a contact sensor, a toggle is a pulse), Light Switch (SW drives bindings).
 - **Feedback:** every action must show something (a relay change, LED-14 refused or LED-15 accepted). Nothing may happen while the button is held. Actions fire on release.
 

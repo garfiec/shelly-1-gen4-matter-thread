@@ -58,4 +58,14 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
 
 "$OUT_MAINT"
 
+# The Matter setup code: the manual code, its check digit and the record.
+OUT_CODE="${TMPDIR:-/tmp}/shelly-test-setup-code"
+${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
+    -I$C/shelly_app_common/include \
+    test_setup_code.c \
+    $C/shelly_app_common/setup_code.c \
+    -o "$OUT_CODE"
+
+"$OUT_CODE"
+
 python3 ../../../scripts/check-ui-spec.py

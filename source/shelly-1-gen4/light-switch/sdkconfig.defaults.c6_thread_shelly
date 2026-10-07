@@ -91,3 +91,6 @@ CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
 
 # Timer callbacks update Matter attributes (the Opener pulse, iot_button).
 CONFIG_ESP_TIMER_TASK_STACK_SIZE=6144
+
+# The device's own Matter setup code (shelly_setup_code.cpp)
+CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y

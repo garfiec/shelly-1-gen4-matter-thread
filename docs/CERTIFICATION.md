@@ -49,9 +49,9 @@ This is normal and expected. Tapping "Add Anyway" or the equivalent proceeds wit
 
 The firmware uses the publicly available ESP-Matter test VID/PIDs. These are standard development credentials published for non-commercial use during firmware development.
 
-Because every unit built from this firmware uses the same test credentials, they all share the same commissioning setup code and QR. That is fine for personal use, but it means the setup code is not a secret, and if you flash more than one device, commission them one at a time to avoid ambiguity during pairing. See [Before commissioning](COMMISSIONING.md#before-commissioning).
+Every unit shares the same test attestation certificate (the one that makes controllers show the uncertified warning), but not the same setup code: each device makes its own, or takes yours from the Shelly sticker. See [Your setup code](COMMISSIONING.md#your-setup-code), including the few cases where a device falls back to the shared test code `3497-011-2332`.
 
-Once a device is commissioned to your Matter fabric, the setup code is no longer used for authentication. Your Matter ecosystem manages credentials going forward.
+Once a device is commissioned, your pairings no longer depend on the setup code: your Matter ecosystem manages credentials from then on. The code is only asked for when a new pairing window opens.
 
 Test credentials are appropriate for personal use, development, and open source distribution. They are not appropriate for a commercial product, which would require a real VID/PID from the CSA and certification.
 

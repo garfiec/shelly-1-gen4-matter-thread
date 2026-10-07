@@ -225,6 +225,7 @@ static const state_fixture_t STATES[] = {
     {"Matter update downloading", {.started = true, .ota_busy = true, .maintenance_available = true}},
     {"Normal, built without Wi-Fi mode", {.started = true, .maintenance_available = false}},
     {"Wi-Fi maintenance mode", {.maintenance = true, .maintenance_available = true}},
+    {"Wi-Fi mode, code change waiting", {.maintenance = true, .maintenance_available = true, .code_change_pending = true}},
 };
 
 static const struct {
@@ -269,6 +270,8 @@ static const char *outcome_name(ui_outcome_t o)
         return "Factory reset";
     case UI_DEFER_RESET:
         return "Factory reset after a restart";
+    case UI_CONFIRM_CODE:
+        return "Save the new setup code";
     default:
         return "?";
     }
@@ -306,6 +309,10 @@ static const decision_row_t DECISIONS[] = {
     {"B-22", "Wi-Fi maintenance mode", "3+ taps", "Refused"},
     {"B-23", "Wi-Fi maintenance mode", "Hold 5-10 s", "Exit Wi-Fi mode"},
     {"B-24", "Wi-Fi maintenance mode", "Hold 10-20 s", "Factory reset after a restart"},
+    {"B-25", "Wi-Fi mode, code change waiting", "Tap", "Toggle, without Matter"},
+    {"B-26", "Wi-Fi mode, code change waiting", "3+ taps", "Save the new setup code"},
+    {"B-27", "Wi-Fi mode, code change waiting", "Hold 5-10 s", "Exit Wi-Fi mode"},
+    {"B-28", "Wi-Fi mode, code change waiting", "Hold 10-20 s", "Factory reset after a restart"},
 };
 
 typedef struct {

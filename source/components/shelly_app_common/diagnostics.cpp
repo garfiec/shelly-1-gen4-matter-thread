@@ -31,6 +31,7 @@
 #include <freertos/task.h>
 #include <string.h>
 
+#include <shelly_setup_code.h>
 #include <status_led.h>
 
 #include <app/clusters/general-diagnostics-server/CodegenIntegration.h>
@@ -302,6 +303,7 @@ void shelly_app_started(void)
         shelly_led_refresh();
     }
     shelly_ui_matter_started();
+    shelly_setup_code_log();
 
     if (xTaskCreate(health_task, "health", HEALTH_TASK_STACK_SIZE, nullptr, 3, nullptr) != pdPASS) {
         // Without the health task a new image is never confirmed and rolls

@@ -31,9 +31,13 @@
 #include <shelly_diag_log.h>
 #include <status_led.h>
 
+#include <esp_openthread.h>
+#include <openthread/icmp6.h>
+
 #include <app/server/CommissioningWindowManager.h>
 #include <app/server/Server.h>
 #include <platform/PlatformManager.h>
+#include <platform/ThreadStackManager.h>
 
 using namespace chip::app::Clusters;
 using namespace esp_matter;
@@ -79,6 +83,29 @@ void shelly_led_refresh(void)
     status_led_set_state(state);
 }
 
+// Answer ping on every Thread address, not only the mesh-internal ones.
+// ESP-IDF's Thread netif glue sets "RLOC/ALOC only" when Thread starts
+// (esp_openthread_netif_glue.c), so pings to the device's routable address
+// go unanswered. Android's Matter pairing pings the device on that address
+// in "Checking connectivity to Thread network" and gives up without a
+// reply, even though the Matter session itself would work (found on a 1PM
+// Gen4 behind an Aqara border router). Runs on the Matter thread, taking
+// the Thread lock the way the Matter SDK does; set again on every Thread
+// state change, after the glue has had its say.
+static void thread_answer_all_pings(void)
+{
+    otInstance *ot = esp_openthread_get_instance();
+    if (ot == nullptr) {
+        return;
+    }
+    chip::DeviceLayer::ThreadStackMgr().LockThreadStack();
+    if (otIcmp6GetEchoMode(ot) != OT_ICMP6_ECHO_HANDLER_ALL) {
+        otIcmp6SetEchoMode(ot, OT_ICMP6_ECHO_HANDLER_ALL);
+        ESP_LOGI(TAG, "Thread: answering ping on every address");
+    }
+    chip::DeviceLayer::ThreadStackMgr().UnlockThreadStack();
+}
+
 void shelly_app_event_cb(const chip::DeviceLayer::ChipDeviceEvent *event, intptr_t arg)
 {
     shelly_diag_log_event(event->Type);
@@ -89,6 +116,7 @@ void shelly_app_event_cb(const chip::DeviceLayer::ChipDeviceEvent *event, intptr
 
     case chip::DeviceLayer::DeviceEventType::kThreadStateChange:
         ESP_LOGI(TAG, "Thread is %sattached", chip::DeviceLayer::ConnectivityMgr().IsThreadAttached() ? "" : "NOT ");
+        thread_answer_all_pings();
         shelly_led_refresh();
         break;
 

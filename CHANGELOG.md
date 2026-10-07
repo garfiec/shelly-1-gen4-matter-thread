@@ -32,6 +32,7 @@ Light, Outlet and Opener 2.2.0; Light Switch 2.3.0. Robustness release: shared d
 - Button presses are handled on their own task instead of the ESP timer task, and the timer task stack is 6144 bytes.
 
 #### Fixed
+- Pairing from Android now completes. The device didn't answer pings on its Thread address, and Android's Matter pairing gives up at "Checking connectivity to Thread network" without one, even though the device was reachable for Matter itself. It now answers ping on every Thread address. Found on a Shelly 1PM Gen4 behind an Aqara border router; it affected every variant.
 - Factory reset fired after about 1.5 s instead of the documented 10 s. The configured 10000 ms was outside the button driver's allowed range, so the driver's 1500 ms default applied, and the same press also toggled the relay. Gesture timing is now the firmware's own.
 - Relay and LED pins held by the stock firmware. Stock firmware can leave the relay and LED pads latched, and a held pad ignores writes until power is removed. The firmware now releases the hold at boot, after first driving the pin to its safe level.
 - Wall switch glitches. A spike that returns the SW input to its previous level no longer counts as a flip; only a real change of the debounced level does.
@@ -195,6 +196,7 @@ The robustness changes of Shelly 1 Gen4 2.2.0, on the Mini. Updates over Matter 
 - Button presses are handled on their own task instead of the ESP timer task, and the timer task stack is 6144 bytes.
 
 #### Fixed
+- Pairing from Android now completes. The device didn't answer pings on its Thread address, and Android's Matter pairing gives up at "Checking connectivity to Thread network" without one, even though the device was reachable for Matter itself. It now answers ping on every Thread address. Found on a Shelly 1PM Gen4 behind an Aqara border router; it affected every variant.
 - Factory reset fired after about 1.5 s instead of the documented 10 s. The configured 10000 ms was outside the button driver's allowed range, so the driver's 1500 ms default applied, and the same press also toggled the relay. Gesture timing is now the firmware's own.
 - Relay and LED pins held by the stock firmware. Stock firmware can leave the relay and LED pads latched, and a held pad ignores writes until power is removed. The firmware now releases the hold at boot, after first driving the pin to its safe level.
 - Wall switch glitches. A spike that returns the SW input to its previous level no longer counts as a flip; only a real change of the debounced level does.
@@ -226,7 +228,7 @@ The Light Switch variant on the Shelly 1 Mini Gen4, at parity with the 1 Gen4 Li
 
 ## Shelly 1PM Gen4 Outlet
 
-### [1.0.0] - Unreleased
+### [1.0.1] - Unreleased
 
 First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: built and unit-tested, not yet verified on hardware.** See the [1PM checklist](docs/FLASHING.md#shelly-1pm-gen4-checklist) before flashing.
 
@@ -246,6 +248,9 @@ First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: built 
 - Welded-relay and meter-lost alerts.
 - All the robustness features of Shelly 1 Gen4 2.2.0.
 - Distinct Matter Product ID (`0x8006`).
+
+#### Fixed
+- Pairing from Android now completes. The device didn't answer pings on its Thread address, and Android's Matter pairing gives up at "Checking connectivity to Thread network" without one, even though the device was reachable for Matter itself. It now answers ping on every Thread address. Found on a Shelly 1PM Gen4 behind an Aqara border router; it affected every variant.
 
 ---
 

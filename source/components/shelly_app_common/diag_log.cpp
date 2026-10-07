@@ -160,13 +160,8 @@ static void status_work(intptr_t)
     // this same thread. Not esp_openthread_lock_acquire(0): when it fails
     // half-way it keeps one of its two mutexes, which would stop Thread.
     chip::DeviceLayer::ThreadStackMgr().LockThreadStack();
-    // ESP-IDF's netif glue sets "RLOC/ALOC only" when Thread starts: put
-    // "all" back on every tick, so a ping to any address shows whether
-    // packets reach OpenThread at all.
-    if (otIcmp6GetEchoMode(ot) != OT_ICMP6_ECHO_HANDLER_ALL) {
-        otIcmp6SetEchoMode(ot, OT_ICMP6_ECHO_HANDLER_ALL);
-        ESP_LOGW(TAG, "OpenThread now answers ping on every address");
-    }
+    // Ping on every address is on in every build (app_common.cpp).
+    int echo = (int)otIcmp6GetEchoMode(ot);
     otDeviceRole role = otThreadGetDeviceRole(ot);
     uint16_t rloc = otThreadGetRloc16(ot);
     uint32_t part = otThreadGetPartitionId(ot);
@@ -181,9 +176,9 @@ static void status_work(intptr_t)
     }
     chip::DeviceLayer::ThreadStackMgr().UnlockThreadStack();
 
-    ESP_LOGI(TAG, "heap %u min %u big %u fs %d win %d role %s rloc 0x%04x part %08lx", (unsigned)free_b,
+    ESP_LOGI(TAG, "heap %u min %u big %u fs %d win %d role %s rloc 0x%04x part %08lx echo %d", (unsigned)free_b,
              (unsigned)min_b, (unsigned)big_b, failsafe, window, otThreadDeviceRoleToString(role), rloc,
-             (unsigned long)part);
+             (unsigned long)part, echo);
     if (h != s_ot_addr_hash) {
         s_ot_addr_hash = h;
         for (int i = 0; i < n_ot; i++) {

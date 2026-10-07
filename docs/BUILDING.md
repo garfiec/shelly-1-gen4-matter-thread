@@ -86,7 +86,6 @@ The same script runs `scripts/check-ui-spec.py`, which fails if [Button, Switch 
 
 For troubleshooting a device with no serial cable, `CONFIG_SHELLY_DIAG_LOG` (off by default, in the "Shelly diagnostics" menu) keeps the last 6 KB of the log in memory that survives a restart and shows it on the [Wi-Fi mode](UPDATING.md#wi-fi-maintenance-mode) page (**Diagnostics log: Open**). It also:
 - logs free heap (current, lowest and largest block), the Thread role, and the device's addresses as OpenThread and lwIP see them, every 5 s while pairing;
-- makes OpenThread answer pings on every address, so a ping shows whether packets reach the device;
 - freezes the log 5 s after a failed pairing, so it survives until you read it. A power cut clears it; so does **Clear** on the page.
 
 It costs 6 KB of heap for the whole run. Build it into its own directory so the normal build is untouched, for example the 1PM:

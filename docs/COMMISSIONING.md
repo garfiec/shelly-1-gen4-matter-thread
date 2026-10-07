@@ -141,6 +141,12 @@ If Home Assistant's Matter integration hangs during commissioning or shows "sett
 3. [Factory reset the Shelly](#factory-reset).
 4. Retry commissioning.
 
+### Android stops at "Checking connectivity to Thread network"
+
+Android's Matter pairing pings the device on its Thread address after it joins the network. Firmware before these releases didn't answer that ping, so pairing from Android failed there, even with a working Thread network. Update to this release: Shelly 1 Gen4 2.2.0, Light Switch 2.3.0, Shelly 1 Mini Gen4 1.1.0, Shelly 1PM Gen4 1.0.1. A device that isn't paired yet can be updated from the [Wi-Fi mode page](UPDATING.md#wi-fi-maintenance-mode).
+
+If it still stops there, your phone may not be able to reach the Thread network: it must be on the same network segment (VLAN) as the Thread border router, which is where it learns the route to Thread devices.
+
 ---
 
 ## Factory reset

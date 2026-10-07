@@ -7,8 +7,7 @@ menu "Shelly diagnostics"
             Keep the last 6 KB of the log in memory that survives a restart,
             and show it on the Wi-Fi maintenance page (Diagnostics log). It
             also logs heap and Thread/IP state every few seconds while pairing,
-            freezes the log 5 s after a failed pairing, and makes OpenThread
-            answer pings on every address. Costs 6 KB of heap for the whole
-            run. For troubleshooting builds only: see docs/BUILDING.md.
+            and freezes the log 5 s after a failed pairing. Costs 6 KB of heap
+            for the whole run. For troubleshooting builds only: see docs/BUILDING.md.
 
 endmenu

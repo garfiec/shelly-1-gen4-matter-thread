@@ -225,7 +225,7 @@ static const state_fixture_t STATES[] = {
     {"Matter update downloading", {.started = true, .ota_busy = true, .maintenance_available = true}},
     {"Normal, built without Wi-Fi mode", {.started = true, .maintenance_available = false}},
     {"Wi-Fi maintenance mode", {.maintenance = true, .maintenance_available = true}},
-    {"Wi-Fi mode, code change waiting", {.maintenance = true, .maintenance_available = true, .code_change_pending = true}},
+    {"Wi-Fi mode, change waiting", {.maintenance = true, .maintenance_available = true, .change_pending = true}},
 };
 
 static const struct {
@@ -270,8 +270,16 @@ static const char *outcome_name(ui_outcome_t o)
         return "Factory reset";
     case UI_DEFER_RESET:
         return "Factory reset after a restart";
-    case UI_CONFIRM_CODE:
-        return "Save the new setup code";
+    case UI_CONFIRM_CHANGE:
+        return "Save the change";
+    case UI_TURN_ON:
+        return "Turn on";
+    case UI_TURN_OFF:
+        return "Turn off";
+    case UI_LOCAL_TURN_ON:
+        return "Turn on, without Matter";
+    case UI_LOCAL_TURN_OFF:
+        return "Turn off, without Matter";
     default:
         return "?";
     }
@@ -309,10 +317,10 @@ static const decision_row_t DECISIONS[] = {
     {"B-22", "Wi-Fi maintenance mode", "3+ taps", "Refused"},
     {"B-23", "Wi-Fi maintenance mode", "Hold 5-10 s", "Exit Wi-Fi mode"},
     {"B-24", "Wi-Fi maintenance mode", "Hold 10-20 s", "Factory reset after a restart"},
-    {"B-25", "Wi-Fi mode, code change waiting", "Tap", "Toggle, without Matter"},
-    {"B-26", "Wi-Fi mode, code change waiting", "3+ taps", "Save the new setup code"},
-    {"B-27", "Wi-Fi mode, code change waiting", "Hold 5-10 s", "Exit Wi-Fi mode"},
-    {"B-28", "Wi-Fi mode, code change waiting", "Hold 10-20 s", "Factory reset after a restart"},
+    {"B-25", "Wi-Fi mode, change waiting", "Tap", "Toggle, without Matter"},
+    {"B-26", "Wi-Fi mode, change waiting", "3+ taps", "Save the change"},
+    {"B-27", "Wi-Fi mode, change waiting", "Hold 5-10 s", "Exit Wi-Fi mode"},
+    {"B-28", "Wi-Fi mode, change waiting", "Hold 10-20 s", "Factory reset after a restart"},
 };
 
 typedef struct {
@@ -333,6 +341,49 @@ static const switch_row_t SWITCHES[] = {
     {"SW-08", "Light Switch", "Normal", "Its own use"},
     {"SW-09", "Light Switch", "Wi-Fi maintenance mode", "Ignored"},
 };
+
+// Wall switch modes (doc: "Wall switch modes", SM-xx): the toggle role only.
+typedef struct {
+    const char *id;
+    const char *mode;
+    const char *change;
+    const char *normal;
+    const char *wifi;
+} switch_mode_row_t;
+
+static const switch_mode_row_t SWITCH_MODES[] = {
+    {"SM-01", "Toggle", "Either", "Toggle", "Toggle, without Matter"},
+    {"SM-02", "Push button", "Press", "Toggle", "Toggle, without Matter"},
+    {"SM-03", "Push button", "Release", "Ignored", "Ignored"},
+    {"SM-04", "Follow", "To on", "Turn on", "Turn on, without Matter"},
+    {"SM-05", "Follow", "To off", "Turn off", "Turn off, without Matter"},
+    {"SM-06", "Disabled", "Either", "Ignored", "Ignored"},
+};
+
+static const struct {
+    const char *name;
+    ui_switch_mode_t mode;
+} MODES[] = {
+    {"Toggle", UI_SWITCH_MODE_TOGGLE},
+    {"Push button", UI_SWITCH_MODE_PUSH},
+    {"Follow", UI_SWITCH_MODE_FOLLOW},
+    {"Disabled", UI_SWITCH_MODE_DISABLED},
+};
+
+// Which switch levels a Change covers: bit 0 = to off/release, bit 1 = to on/press.
+static int change_mask(const char *change)
+{
+    if (strcmp(change, "Either") == 0) {
+        return 3;
+    }
+    if (strcmp(change, "Press") == 0 || strcmp(change, "To on") == 0) {
+        return 2;
+    }
+    if (strcmp(change, "Release") == 0 || strcmp(change, "To off") == 0) {
+        return 1;
+    }
+    return 0;
+}
 
 static const ui_state_t *find_state(const char *name)
 {
@@ -404,6 +455,80 @@ static void test_decisions(void)
                   row->state, got, row->outcome);
     }
     CHECK_ROW("B", ui_decide(UI_INPUT_TAP, NULL) == UI_IGNORE, "%s", "NULL state");
+
+    // Wall switch modes: every mode has rows covering both changes exactly once.
+    CHECK_ROW("SM", sizeof(MODES) / sizeof(MODES[0]) == UI_SWITCH_MODE_COUNT, "%s", "every mode has a name");
+    for (size_t m = 0; m < sizeof(MODES) / sizeof(MODES[0]); m++) {
+        int covered = 0;
+        for (size_t r = 0; r < sizeof(SWITCH_MODES) / sizeof(SWITCH_MODES[0]); r++) {
+            if (strcmp(SWITCH_MODES[r].mode, MODES[m].name) == 0) {
+                int mask = change_mask(SWITCH_MODES[r].change);
+                CHECK_ROW(SWITCH_MODES[r].id, (covered & mask) == 0 && mask != 0, "%s: change \"%s\" overlaps or is unknown",
+                          MODES[m].name, SWITCH_MODES[r].change);
+                covered |= mask;
+            }
+        }
+        CHECK_ROW("SM", covered == 3, "%s: rows cover both changes", MODES[m].name);
+    }
+    const ui_state_t *normal = find_state("Normal");
+    const ui_state_t *wifi = find_state("Wi-Fi maintenance mode");
+    const ui_state_t *booting = find_state("Booting");
+    for (size_t r = 0; r < sizeof(SWITCH_MODES) / sizeof(SWITCH_MODES[0]); r++) {
+        const switch_mode_row_t *row = &SWITCH_MODES[r];
+        const ui_switch_mode_t *mode = NULL;
+        for (size_t m = 0; m < sizeof(MODES) / sizeof(MODES[0]); m++) {
+            if (strcmp(MODES[m].name, row->mode) == 0) {
+                mode = &MODES[m].mode;
+            }
+        }
+        int mask = change_mask(row->change);
+        CHECK_ROW(row->id, mode != NULL && mask != 0, "unknown mode \"%s\" or change \"%s\"", row->mode, row->change);
+        if (mode == NULL || mask == 0) {
+            continue;
+        }
+        for (int active = 0; active <= 1; active++) {
+            if (!(mask & (1 << active))) {
+                continue;
+            }
+            ui_state_t st = *normal;
+            st.switch_role = UI_SWITCH_TOGGLE;
+            st.switch_mode = *mode;
+            st.switch_active = active;
+            const char *got = outcome_name(ui_decide(UI_INPUT_SWITCH, &st));
+            CHECK_ROW(row->id, strcmp(got, row->normal) == 0, "%s / %s / Normal: got \"%s\", want \"%s\"", row->mode,
+                      row->change, got, row->normal);
+            st = *wifi;
+            st.switch_role = UI_SWITCH_TOGGLE;
+            st.switch_mode = *mode;
+            st.switch_active = active;
+            got = outcome_name(ui_decide(UI_INPUT_SWITCH, &st));
+            CHECK_ROW(row->id, strcmp(got, row->wifi) == 0, "%s / %s / Wi-Fi mode: got \"%s\", want \"%s\"", row->mode,
+                      row->change, got, row->wifi);
+            // Booting ignores the switch in every mode (SW-01).
+            st = *booting;
+            st.switch_role = UI_SWITCH_TOGGLE;
+            st.switch_mode = *mode;
+            st.switch_active = active;
+            CHECK_ROW(row->id, ui_decide(UI_INPUT_SWITCH, &st) == UI_IGNORE, "%s: acted while booting", row->mode);
+        }
+    }
+    // The page's names round-trip, and nothing else parses.
+    for (int m = 0; m < UI_SWITCH_MODE_COUNT; m++) {
+        ui_switch_mode_t back = UI_SWITCH_MODE_COUNT;
+        CHECK_ROW("SM", ui_switch_mode_parse(ui_switch_mode_name((ui_switch_mode_t)m), &back) && back == (ui_switch_mode_t)m,
+                  "mode %d name round-trip", m);
+    }
+    ui_switch_mode_t junk = UI_SWITCH_MODE_TOGGLE;
+    CHECK_ROW("SM", !ui_switch_mode_parse("Toggle", &junk) && !ui_switch_mode_parse("", &junk) &&
+                        !ui_switch_mode_parse(NULL, &junk) && !ui_switch_mode_parse("follow ", &junk),
+              "%s", "unknown names refused");
+    CHECK_ROW("SM", strcmp(ui_switch_mode_name(UI_SWITCH_MODE_COUNT), "toggle") == 0, "%s", "unknown mode names as toggle");
+
+    // A mode value the page never sets is ignored, not acted on.
+    ui_state_t odd = *normal;
+    odd.switch_role = UI_SWITCH_TOGGLE;
+    odd.switch_mode = UI_SWITCH_MODE_COUNT;
+    CHECK_ROW("SM", ui_decide(UI_INPUT_SWITCH, &odd) == UI_IGNORE, "%s", "unknown mode");
 }
 
 // ---------------------------------------------------------------------------
@@ -438,6 +563,18 @@ static void test_led_patterns(void)
     led_pattern_level(p, 100, &done);
     CHECK_ROW("LED-10", done, "%s", "press blip ends");
     // Every pattern that repeats has a period, and no pattern overflows.
+    p = &LED_PATTERNS[LED_PAT_UPDATING];
+    CHECK_ROW("LED-16", led_pattern_level(p, 0, NULL) && led_pattern_level(p, 999, NULL), "%s", "update: on for 1 s");
+    CHECK_ROW("LED-16", !led_pattern_level(p, 1000, NULL) && !led_pattern_level(p, 1999, NULL), "%s",
+              "update: off for 1 s");
+    // No other pattern looks like the update pattern (not even the hold hints).
+    for (int i = 0; i < LED_PAT_COUNT; i++) {
+        const led_pattern_t *q = &LED_PATTERNS[i];
+        bool same = i != LED_PAT_UPDATING && q->first_on == p->first_on && q->repeat == p->repeat &&
+                    q->steps == p->steps && memcmp(q->ms, p->ms, sizeof(q->ms)) == 0;
+        CHECK_ROW("LED-16", !same, "pattern %d looks like the update pattern", i);
+    }
+
     for (int i = 0; i < LED_PAT_COUNT; i++) {
         CHECK_ROW("LED", LED_PATTERNS[i].steps <= LED_PATTERN_MAX_STEPS, "pattern %d has too many steps", i);
         CHECK_ROW("LED", LED_PATTERNS[i].repeat || LED_PATTERNS[i].steps > 0, "one-shot pattern %d never ends", i);

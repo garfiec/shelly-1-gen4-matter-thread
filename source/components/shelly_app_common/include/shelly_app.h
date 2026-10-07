@@ -95,14 +95,20 @@ private:
 // Returns true if the OnOff attribute changed; false if the relay refused
 // (thermal lockout, protection), Matter is not up yet or stayed busy.
 bool shelly_onoff_toggle(uint16_t endpoint_id);
+// The same, but to a given state: the wall switch's Follow mode. If OnOff
+// is already `on`, nothing is written, but the hooks still run and it
+// returns whether the relay is in that state.
+bool shelly_onoff_toggle_to(uint16_t endpoint_id, bool on);
 void shelly_onoff_set(uint16_t endpoint_id, bool on);
 
-// Called by shelly_onoff_toggle() around every local toggle, while holding
-// the CHIP stack lock, and by shelly_local_relay_toggle() in maintenance
-// mode, without it: hook before the write, with the current OnOff value,
-// and done after it, with whether the relay accepted the change. Neither
-// may block. Set during boot, before Matter starts.
-typedef void (*shelly_local_toggle_hook_t)(bool currently_on);
+// Called by shelly_onoff_toggle() and shelly_onoff_toggle_to() around every
+// local toggle or set, while holding the CHIP stack lock, and by their
+// shelly_local_relay_* counterparts in maintenance mode, without it: hook
+// before the write, with the state the user asked for (also when the
+// output is already there and nothing is written), and done after it, with
+// whether the output is now in that state. Neither may block. Set during
+// boot, before Matter starts.
+typedef void (*shelly_local_toggle_hook_t)(bool turning_on);
 typedef void (*shelly_local_toggle_done_t)(bool accepted);
 void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook, shelly_local_toggle_done_t done);
 
@@ -120,6 +126,9 @@ void shelly_onoff_set_async(uint16_t endpoint_id, bool on);
 
 // Toggle the output; true if it changed, false if refused.
 typedef bool (*shelly_ui_toggle_fn_t)(void);
+// Bring the output to `on` by a toggle if it differs; true if it is now
+// there, false if refused.
+typedef bool (*shelly_ui_toggle_to_fn_t)(bool on);
 
 typedef struct {
     // Tap and toggle-role wall switch in normal mode: normally
@@ -129,6 +138,10 @@ typedef struct {
     // The same without Matter, for maintenance mode: the relay directly
     // (the Opener pulses it).
     shelly_ui_toggle_fn_t local_toggle;
+    // Toggle role only (Follow mode): the same as toggle / local_toggle,
+    // but to a given state. NULL for the Opener and the Light Switch.
+    shelly_ui_toggle_to_fn_t toggle_to;
+    shelly_ui_toggle_to_fn_t local_toggle_to;
     // What the wall switch terminal does on this variant.
     ui_switch_role_t switch_role;
     // The variant's own handling of a wall-switch change (UI_VARIANT): the
@@ -142,13 +155,18 @@ typedef struct {
 esp_err_t shelly_ui_init(const shelly_ui_config_t *config);
 
 // Every variant calls this from its wall-switch callback (switch_input), so
-// ui_decide() decides what a change does in each state.
-void shelly_ui_switch_changed(void);
+// ui_decide() decides what a change does in each state and switch mode.
+// active: the switch is now on or pressed (switch_input_active()).
+void shelly_ui_switch_changed(bool active);
+
+// The variant's wall-switch role (from shelly_ui_init).
+ui_switch_role_t shelly_ui_switch_role(void);
 
 // Toggle the relay directly, without Matter: the local toggle for Wi-Fi
 // maintenance mode. Runs the local-toggle hook first, like
 // shelly_onoff_toggle(). True if the relay accepted the change.
 bool shelly_local_relay_toggle(void);
+bool shelly_local_relay_toggle_to(bool on);
 
 // ---------------------------------------------------------------------------
 // Wi-Fi maintenance mode (shelly_maintenance component)

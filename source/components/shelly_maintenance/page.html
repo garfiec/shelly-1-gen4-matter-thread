@@ -29,7 +29,7 @@ progress { width: 100%; height: 10px; margin-top: 10px; }
 .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .code { font-size: 1.9rem; font-weight: 600; letter-spacing: .04em; font-variant-numeric: tabular-nums; margin: 2px 0 4px; }
 .muted { color: var(--muted); }
-.pending { border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; margin-top: 12px; }
+section.pending { border-color: var(--accent); }
 input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); margin: 4px 0 10px; font-variant-numeric: tabular-nums; }
 .buttons { display: flex; gap: 10px; flex-wrap: wrap; }
 </style>
@@ -69,12 +69,24 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 <button id="gencode">Make a new random code</button>
 </div>
 <div id="codemsg" class="msg"></div>
-<div class="pending" id="pendingbox" hidden>
-<div>New code <b id="pendingcode"></b></div>
+</section>
+
+<section id="switchcard" hidden>
+<h2>Wall switch</h2>
+<p class="muted" style="margin:0 0 8px">What the switch wired to SW does. Now: <b id="swnow">…</b></p>
+<label class="check"><input type="radio" name="swmode" value="toggle"> <span><b>Toggle</b> — an ordinary on/off switch: any flip toggles the relay</span></label>
+<label class="check"><input type="radio" name="swmode" value="push"> <span><b>Push button</b> — a button that springs back: each press toggles once</span></label>
+<label class="check"><input type="radio" name="swmode" value="follow"> <span><b>Follow</b> — the relay matches the switch: switch on, relay on</span></label>
+<label class="check"><input type="radio" name="swmode" value="disabled"> <span><b>Disabled</b> — the switch does nothing</span></label>
+<button id="setswitch">Save</button>
+<div id="switchmsg" class="msg"></div>
+</section>
+
+<section class="pending" id="pendingbox" hidden>
+<div><span id="pendingwhat"></span> <b id="pendingval"></b></div>
 <div>Press the device's button <b>3 times</b> to save it. Time left: <b id="pendingsecs"></b></div>
-<div class="muted" style="margin:6px 0 8px">Nothing changes until you do. The new code applies once the device is back in normal operation.</div>
-<button id="cancelcode">Cancel</button>
-</div>
+<div class="muted" style="margin:6px 0 8px" id="pendingnote"></div>
+<button id="cancelchange">Cancel</button>
 </section>
 
 <section>
@@ -97,7 +109,8 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 <script>
 var $ = function (id) { return document.getElementById(id); };
 var busy = false;
-var waiting = false, waiting_for = '';
+var waiting = null, swTouched = false;
+var MODE_NAMES = { toggle: 'Toggle', push: 'Push button', follow: 'Follow', disabled: 'Disabled' };
 function msg(el, text, kind) { el.textContent = text; el.className = 'msg' + (kind ? ' ' + kind : ''); }
 function refresh() {
   if (busy) return;
@@ -108,17 +121,34 @@ function refresh() {
     $('codesrc').textContent = s.code_source === 'yours' ? 'Your code' :
       s.code_source === 'test' ? 'The shared test code: this device could not save its own code' :
       (s.code_new ? 'Made by this device just now' : 'Made by this device');
+    $('switchcard').hidden = !s.switch_modes;
+    $('swnow').textContent = MODE_NAMES[s.switch_mode] || s.switch_mode;
+    if (!swTouched) {
+      var r = document.querySelector('input[name=swmode][value=' + s.switch_mode + ']');
+      if (r) r.checked = true;
+    }
     var p = s.pending;
     $('pendingbox').hidden = !p;
     if (p) {
-      $('pendingcode').textContent = p;
+      var isCode = s.pending_kind === 'code';
+      $('pendingwhat').textContent = isCode ? 'New setup code' : 'New wall switch mode:';
+      $('pendingval').textContent = isCode ? p : (MODE_NAMES[p] || p);
+      $('pendingnote').textContent = isCode ?
+        'Nothing changes until you press. The new code applies once the device is back in normal operation.' :
+        'Nothing changes until you press. The new mode applies at once.';
       $('pendingsecs').textContent = Math.floor(s.pending_secs / 60) + ':' + ('0' + s.pending_secs % 60).slice(-2);
+      waiting = { kind: s.pending_kind, value: p };
     } else if (waiting) {
-      waiting = false;
-      if (s.code === waiting_for) msg($('codemsg'), 'Saved. Pair with ' + s.code + ' once you exit.', 'good');
-      else msg($('codemsg'), 'The change was not saved. The code is still ' + s.code + '.', 'bad');
+      var w = waiting; waiting = null;
+      if (w.kind === 'code') {
+        if (s.code === w.value) msg($('codemsg'), 'Saved. Pair with ' + s.code + ' once you exit.', 'good');
+        else msg($('codemsg'), 'The change was not saved. The code is still ' + s.code + '.', 'bad');
+      } else {
+        swTouched = false;
+        if (s.switch_mode === w.value) msg($('switchmsg'), 'Saved: ' + MODE_NAMES[s.switch_mode] + '.', 'good');
+        else msg($('switchmsg'), 'The change was not saved. The switch is still ' + (MODE_NAMES[s.switch_mode] || s.switch_mode) + '.', 'bad');
+      }
     }
-    if (p) { waiting = true; waiting_for = p; }
   }).catch(function () {});
 }
 setInterval(refresh, 2000); refresh();
@@ -128,16 +158,24 @@ $('toggle').onclick = function () {
     msg($('relaymsg'), j.ok ? '' : j.msg, j.ok ? '' : 'bad'); refresh();
   }).catch(function () { msg($('relaymsg'), 'No response from the device', 'bad'); });
 };
-function codePost(url, body) {
-  msg($('codemsg'), '');
+function post(url, body, out) {
+  msg(out, '');
   fetch(url, { method: 'POST', body: body || '' }).then(function (r) { return r.json(); }).then(function (j) {
-    if (!j.ok) msg($('codemsg'), j.msg, 'bad');
+    if (!j.ok) msg(out, j.msg, 'bad');
     refresh();
-  }).catch(function () { msg($('codemsg'), 'No response from the device', 'bad'); });
+  }).catch(function () { msg(out, 'No response from the device', 'bad'); });
 }
-$('setcode').onclick = function () { codePost('/code/set', $('newcode').value); };
-$('gencode').onclick = function () { codePost('/code/new'); };
-$('cancelcode').onclick = function () { waiting = false; codePost('/code/cancel'); };
+$('setcode').onclick = function () { post('/code/set', $('newcode').value, $('codemsg')); };
+$('gencode').onclick = function () { post('/code/new', '', $('codemsg')); };
+document.querySelectorAll('input[name=swmode]').forEach(function (r) { r.onchange = function () { swTouched = true; }; });
+$('setswitch').onclick = function () {
+  var r = document.querySelector('input[name=swmode]:checked');
+  if (r) post('/switch/mode', r.value, $('switchmsg'));
+};
+$('cancelchange').onclick = function () {
+  var out = waiting && waiting.kind === 'switch' ? $('switchmsg') : $('codemsg');
+  waiting = null; swTouched = false; post('/change/cancel', '', out);
+};
 $('exit').onclick = function () {
   fetch('/exit', { method: 'POST' }).finally(function () {
     document.body.innerHTML = '<main><h1>Restarting</h1><p class="lead">The device is going back to normal operation. You can close this page.</p></main>';

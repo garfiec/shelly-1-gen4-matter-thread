@@ -36,8 +36,9 @@ typedef void (*switch_input_cb_t)(bool level, void *arg);
 // differs from the last settled level, calls on_change(level, arg). A
 // glitch that returns to the previous level is ignored.
 //
-// A toggle-mode wall switch toggles the relay from on_change on every
-// flip, regardless of position.
+// What a change does depends on the variant and the wall-switch mode
+// (docs/BUTTON-AND-LED.md, Wall switch modes): on_change passes it to
+// shelly_ui_switch_changed(switch_input_active(level)).
 //
 // HARDWARE NOTE: The Shelly PCB has an external circuit that defines the
 // SW pin level. Do not enable the internal pullup or pulldown — internal
@@ -48,6 +49,10 @@ esp_err_t switch_input_init(switch_input_cb_t on_change, void *arg);
 
 // The current raw level of the SW pin (true = HIGH).
 bool switch_input_get_level(void);
+
+// Whether a level means the switch is on or pressed
+// (CONFIG_SHELLY_SWITCH_ACTIVE_HIGH).
+bool switch_input_active(bool level);
 
 #ifdef __cplusplus
 }

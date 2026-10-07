@@ -35,6 +35,7 @@
 #include <status_led.h>
 
 #include <app/clusters/general-diagnostics-server/CodegenIntegration.h>
+#include <app/clusters/ota-requestor/OTARequestorInterface.h>
 #include <platform/ESP32/DiagnosticDataProviderImpl.h>
 #include <platform/PlatformManager.h>
 
@@ -254,6 +255,7 @@ static void health_task(void *arg)
     int64_t healthy_since_us = started_us;
     bool confirmed = false;
     bool stall_logged = false;
+    bool updating = false;
 
     while (true) {
         int64_t now = esp_timer_get_time();
@@ -263,7 +265,20 @@ static void health_task(void *arg)
         // is not wedged.
         bool responsive = false;
         if (PlatformMgr().TryLockChipStack()) {
+            // While we have the lock anyway: is a Matter update running?
+            // The LED says so (LED-16), so nobody unplugs the device.
+            chip::OTARequestorInterface *requestor = chip::GetRequestorInstance();
+            bool now_updating = false;
+            if (requestor != nullptr) {
+                auto st = requestor->GetCurrentUpdateState();
+                now_updating = st == chip::OTARequestorInterface::OTAUpdateStateEnum::kDownloading ||
+                               st == chip::OTARequestorInterface::OTAUpdateStateEnum::kApplying;
+            }
             PlatformMgr().UnlockChipStack();
+            if (now_updating != updating) {
+                updating = now_updating;
+                status_led_set_updating(updating);
+            }
             if (now - last_ok_us > OTA_CONFIRM_MAX_GAP_US) {
                 healthy_since_us = now;
             }

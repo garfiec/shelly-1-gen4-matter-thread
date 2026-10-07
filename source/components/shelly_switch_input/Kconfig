@@ -1,0 +1,14 @@
+menu "Shelly wall switch input"
+
+    config SHELLY_SWITCH_ACTIVE_HIGH
+        bool "SW reads HIGH when the switch is on (pressed)"
+        default y
+        help
+            Which level of the SW input means the wall switch is on, or a push
+            button is pressed. Only the Follow and Push button switch modes use
+            it (docs/BUTTON-AND-LED.md, Wall switch modes); Toggle acts on any
+            change. The default comes from the hardware-tested ESPHome
+            configuration for these boards (SW not inverted); it is not verified
+            with this firmware. If Follow runs backwards, turn this off.
+
+endmenu

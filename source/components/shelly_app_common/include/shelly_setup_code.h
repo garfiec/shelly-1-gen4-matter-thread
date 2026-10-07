@@ -21,7 +21,7 @@
 // needs one and saves it in NVS (namespace "shelly_code"), which a factory
 // reset keeps. The owner can replace it with their own 11-digit code from
 // the Wi-Fi maintenance page, confirmed with 3 presses of the button
-// (docs/BUTTON-AND-LED.md, B-25).
+// (docs/BUTTON-AND-LED.md, B-26).
 //
 // If the code can't be saved, the device pairs with the shared test code
 // for that boot, so it is always pairable. A build without Wi-Fi mode
@@ -50,19 +50,15 @@ void shelly_setup_code_log(void);
 // was made just now.
 bool shelly_setup_code_current(setup_code_t *out, bool *created);
 
-// Stage a change: the owner's 11-digit code, or a new random one. It takes
-// effect only on shelly_setup_code_confirm() (3 presses of the button)
-// within SHELLY_SETUP_CODE_CONFIRM_S, and on the next normal boot.
-#define SHELLY_SETUP_CODE_CONFIRM_S 120
+// Stage a change: the owner's 11-digit code, or a new random one. It waits
+// in shelly_settings (shelly_change_*) for 3 presses of the button, and
+// applies from the next normal boot.
 setup_code_err_t shelly_setup_code_stage_manual(const char *text);
 void shelly_setup_code_stage_random(void);
-void shelly_setup_code_cancel(void);
 
-// The staged code and the seconds left to confirm it; false if none.
-bool shelly_setup_code_pending(setup_code_t *out, uint32_t *secs_left);
-
-// Save the staged code. False if none is staged or the save failed.
-bool shelly_setup_code_confirm(void);
+// Save a code (what confirming a staged change does). False if it couldn't
+// be saved, or in a build without Wi-Fi mode.
+bool shelly_setup_code_save(const setup_code_t *code);
 
 #ifdef __cplusplus
 }

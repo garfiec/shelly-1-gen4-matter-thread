@@ -79,7 +79,7 @@ void switch_binding_report(void)
 // binding manager and the CHIP stack lock do not exist yet.
 static void switch_binding_changed(bool level, void *arg)
 {
-    shelly_ui_switch_changed();
+    shelly_ui_switch_changed(switch_input_active(level));
 }
 
 void switch_binding_send(void)

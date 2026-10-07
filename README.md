@@ -93,6 +93,8 @@ Once it is up and running, [updates are available](docs/UPDATING.md) through Hom
 - Onboard button with stock Shelly gestures: tap to toggle, press 3 times to pair, hold 5 s for Wi-Fi maintenance mode, hold 10 s to factory reset, with LED feedback while you hold. See [Button, Switch and LED](docs/BUTTON-AND-LED.md).
 - Wi-Fi maintenance mode (experimental): hold the button 5 s and install an update from a phone, with no Home Assistant and no wires. See [Updating](docs/UPDATING.md#wi-fi-maintenance-mode).
 - Its own Matter setup code per device, kept through factory resets, or your own such as the code on the Shelly sticker. See [Your setup code](docs/COMMISSIONING.md#your-setup-code).
+- Wall switch modes for the SW input: toggle switch (default), push button, follow the switch position, or disabled. See [Wall switch modes](docs/BUTTON-AND-LED.md#wall-switch-modes).
+- Status LED blinks slowly while a Matter update installs, so you know not to unplug it.
 - External wall switch input on the SW terminal.
 - Configurable power-on behavior through the Matter StartUpOnOff attribute.
 - Status LED indication for BLE advertising, Thread connecting, and Thread connected.

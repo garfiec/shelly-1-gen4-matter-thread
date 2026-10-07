@@ -20,8 +20,8 @@
 // decision table. Pure C, no ESP-IDF includes, so the host tests walk it
 // row by row.
 //
-// docs/BUTTON-AND-LED.md is the source of truth. Its B-N-xx, B-M-xx and
-// SW-xx rows are each covered by a host test tagged with the row ID, and
+// docs/BUTTON-AND-LED.md is the source of truth. Its B-xx, SW-xx and SM-xx
+// rows are each covered by a host test tagged with the row ID, and
 // scripts/check-ui-spec.py fails the tests if a row has no test. Change the
 // doc, this table and the tests together (see CLAUDE.md).
 
@@ -48,14 +48,25 @@ typedef enum {
     UI_SWITCH_BINDING,      // Light Switch: drives bound lights
 } ui_switch_role_t;
 
+// What a toggle-role wall switch does (set on the Wi-Fi mode page).
+typedef enum {
+    UI_SWITCH_MODE_TOGGLE = 0,  // Every change toggles (the default)
+    UI_SWITCH_MODE_PUSH,        // A push button: toggles when pressed
+    UI_SWITCH_MODE_FOLLOW,      // The relay follows the switch position
+    UI_SWITCH_MODE_DISABLED,    // The switch does nothing
+    UI_SWITCH_MODE_COUNT,
+} ui_switch_mode_t;
+
 typedef struct {
     bool maintenance;           // Running the Wi-Fi maintenance boot
     bool started;               // Matter is up (normal mode only)
     bool pending_verify;        // Running image not yet confirmed (first 60 s after an update)
     bool ota_busy;              // A Matter OTA download is in progress
     bool maintenance_available; // This build has Wi-Fi maintenance mode
-    bool code_change_pending;   // Maintenance: a setup-code change waits on the page for 3 presses
+    bool change_pending;        // Maintenance: a change on the page waits for 3 presses
     ui_switch_role_t switch_role;
+    ui_switch_mode_t switch_mode; // Toggle role only
+    bool switch_active;         // UI_INPUT_SWITCH: the switch is now on (pressed)
 } ui_state_t;
 
 typedef enum {
@@ -63,16 +74,25 @@ typedef enum {
     UI_REFUSE,              // Refusal flash
     UI_TOGGLE,              // Toggle through Matter (the relay follows OnOff)
     UI_LOCAL_TOGGLE,        // Toggle the relay directly (maintenance, no Matter)
+    UI_TURN_ON,             // Turn on through Matter (a no-op if already on)
+    UI_TURN_OFF,            // Turn off through Matter (a no-op if already off)
+    UI_LOCAL_TURN_ON,       // Turn the relay on directly (maintenance)
+    UI_LOCAL_TURN_OFF,      // Turn the relay off directly (maintenance)
     UI_VARIANT,             // The variant's own handling (contact report, binding)
     UI_OPEN_PAIRING,        // Open or restart the pairing window
     UI_ENTER_MAINTENANCE,   // Restart into Wi-Fi maintenance mode
     UI_EXIT_MAINTENANCE,    // Restart into normal mode
     UI_FACTORY_RESET,       // Factory reset now, through Matter
     UI_DEFER_RESET,         // Record a reset, restart, reset once Matter is up
-    UI_CONFIRM_CODE,        // Save the setup code waiting on the maintenance page
+    UI_CONFIRM_CHANGE,      // Save the change waiting on the maintenance page
 } ui_outcome_t;
 
 ui_outcome_t ui_decide(ui_input_t input, const ui_state_t *st);
+
+// The switch mode's name on the Wi-Fi page: "toggle", "push", "follow",
+// "disabled". parse() is false for anything else.
+const char *ui_switch_mode_name(ui_switch_mode_t mode);
+bool ui_switch_mode_parse(const char *name, ui_switch_mode_t *out);
 
 #ifdef __cplusplus
 }

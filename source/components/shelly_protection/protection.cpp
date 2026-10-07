@@ -298,19 +298,20 @@ static esp_err_t onoff_command_cb(const ConcreteCommandPath &command_path, TLVRe
     return ESP_OK;
 }
 
-// The local-toggle hooks: shelly_onoff_toggle() runs them around every
-// button press and wall-switch flip, under the CHIP stack lock. A toggle
-// from off clears the latch first, so the relay gate can let it through.
+// The local-toggle hooks: shelly_onoff_toggle() and shelly_onoff_toggle_to()
+// run them around every button press and wall-switch change, under the CHIP
+// stack lock, with the state the user asked for. A turn-on clears the latch
+// first, so the relay gate can let it through.
 // If the relay refuses it anyway (the 2 s cooldown, over-temperature,
 // overvoltage), the latch comes back: only a tap or flip that turns the
 // outlet on clears it (docs/PROTECTION.md).
 static bool s_unlatched_by_toggle = false;
 
-static void local_toggle_hook(bool currently_on)
+static void local_toggle_hook(bool turning_on)
 {
     user_switched();
     bool was_latched = s_latched;
-    if (!currently_on) {
+    if (turning_on) {
         user_on();
     }
     s_unlatched_by_toggle = was_latched && !s_latched;

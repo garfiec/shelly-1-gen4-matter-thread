@@ -17,13 +17,13 @@
 // shelly_setup_code.cpp
 
 #include "shelly_setup_code.h"
+#include "shelly_settings.h"
 
 #include <pthread.h>
 #include <string.h>
 
 #include <esp_log.h>
 #include <esp_random.h>
-#include <esp_timer.h>
 #include <nvs.h>
 #include <sdkconfig.h>
 
@@ -260,22 +260,8 @@ void shelly_setup_code_log(void)
 }
 
 // ---- Wi-Fi maintenance mode: show and change the code ----
-
-static setup_code_t s_staged;
-static bool s_has_staged = false;
-static int64_t s_staged_at_us = 0;
-
-static bool staged_live(void)
-{
-    if (!s_has_staged) {
-        return false;
-    }
-    if (esp_timer_get_time() - s_staged_at_us >= (int64_t)SHELLY_SETUP_CODE_CONFIRM_S * 1000000) {
-        s_has_staged = false;
-        return false;
-    }
-    return true;
-}
+// The change waits for 3 presses in shelly_settings.cpp; confirming it
+// calls shelly_setup_code_save().
 
 bool shelly_setup_code_current(setup_code_t *out, bool *created)
 {
@@ -291,15 +277,6 @@ bool shelly_setup_code_current(setup_code_t *out, bool *created)
 #endif
 }
 
-static void stage(const setup_code_t *code)
-{
-    pthread_mutex_lock(&s_lock);
-    s_staged = *code;
-    s_has_staged = true;
-    s_staged_at_us = esp_timer_get_time();
-    pthread_mutex_unlock(&s_lock);
-}
-
 setup_code_err_t shelly_setup_code_stage_manual(const char *text)
 {
     uint32_t passcode;
@@ -308,57 +285,33 @@ setup_code_err_t shelly_setup_code_stage_manual(const char *text)
     if (err != SETUP_CODE_OK) {
         return err;
     }
-    setup_code_t code = {
-        .passcode = passcode,
-        .discriminator = setup_code_discriminator_from_short(short_disc, (uint8_t)esp_random()),
-        .source = SETUP_CODE_SOURCE_USER,
-    };
-    stage(&code);
+    shelly_change_t change = {};
+    change.kind = SHELLY_CHANGE_SETUP_CODE;
+    change.code.passcode = passcode;
+    change.code.discriminator = setup_code_discriminator_from_short(short_disc, (uint8_t)esp_random());
+    change.code.source = SETUP_CODE_SOURCE_USER;
+    shelly_change_stage(&change);
     return SETUP_CODE_OK;
 }
 
 void shelly_setup_code_stage_random(void)
 {
-    setup_code_t code;
-    setup_code_generate(rand32, nullptr, &code);
-    stage(&code);
+    shelly_change_t change = {};
+    change.kind = SHELLY_CHANGE_SETUP_CODE;
+    setup_code_generate(rand32, nullptr, &change.code);
+    shelly_change_stage(&change);
 }
 
-void shelly_setup_code_cancel(void)
+bool shelly_setup_code_save(const setup_code_t *code)
 {
-    pthread_mutex_lock(&s_lock);
-    s_has_staged = false;
-    pthread_mutex_unlock(&s_lock);
-}
-
-bool shelly_setup_code_pending(setup_code_t *out, uint32_t *secs_left)
-{
-    pthread_mutex_lock(&s_lock);
-    bool live = staged_live();
-    if (live) {
-        if (out != nullptr) {
-            *out = s_staged;
-        }
-        if (secs_left != nullptr) {
-            int64_t left_us = (int64_t)SHELLY_SETUP_CODE_CONFIRM_S * 1000000 - (esp_timer_get_time() - s_staged_at_us);
-            *secs_left = (uint32_t)((left_us + 999999) / 1000000);
-        }
+    if (!OWN_CODE) {
+        return false;
     }
-    pthread_mutex_unlock(&s_lock);
-    return live;
-}
-
-bool shelly_setup_code_confirm(void)
-{
     pthread_mutex_lock(&s_lock);
-    bool ok = false;
-    if (OWN_CODE && staged_live()) {
-        ok = save(&s_staged);
-        if (ok) {
-            s_has_staged = false;
-            ESP_LOGW(TAG, "New setup code saved; it applies from the next normal boot");
-        }
-    }
+    bool ok = save(code);
     pthread_mutex_unlock(&s_lock);
+    if (ok) {
+        ESP_LOGW(TAG, "New setup code saved; it applies from the next normal boot");
+    }
     return ok;
 }

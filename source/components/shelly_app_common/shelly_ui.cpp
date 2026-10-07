@@ -38,7 +38,7 @@
 #include <app/server/Server.h>
 
 #include <relay.h>
-#include <shelly_setup_code.h>
+#include <shelly_settings.h>
 
 using namespace esp_matter;
 
@@ -263,7 +263,7 @@ static bool ota_download_busy(void)
            requestor->GetCurrentUpdateState() != chip::OTARequestorInterface::OTAUpdateStateEnum::kIdle;
 }
 
-static ui_state_t current_state(ui_input_t input)
+static ui_state_t current_state(ui_input_t input, bool switch_active = false)
 {
     ui_state_t st = {};
     st.maintenance = shelly_maintenance_active();
@@ -275,8 +275,10 @@ static ui_state_t current_state(ui_input_t input)
     // otadata read and the lock for taps and the wall switch.
     st.pending_verify = (input == UI_INPUT_WIFI_MODE || input == UI_INPUT_FACTORY_RESET) && image_pending_verify();
     st.ota_busy = input == UI_INPUT_WIFI_MODE && !st.maintenance && ota_download_busy();
-    st.code_change_pending = input == UI_INPUT_PAIRING && st.maintenance && shelly_setup_code_pending(nullptr, nullptr);
+    st.change_pending = input == UI_INPUT_PAIRING && st.maintenance && shelly_change_pending(nullptr, nullptr);
     st.switch_role = s_config.switch_role;
+    st.switch_mode = shelly_switch_mode_get();
+    st.switch_active = switch_active;
     return st;
 }
 
@@ -327,6 +329,13 @@ static void run_toggle(shelly_ui_toggle_fn_t fn)
     }
 }
 
+static void run_toggle_to(shelly_ui_toggle_to_fn_t fn, bool on)
+{
+    if (fn == nullptr || !fn(on)) {
+        status_led_flash_refused();
+    }
+}
+
 static void carry_out(ui_outcome_t outcome)
 {
     switch (outcome) {
@@ -349,6 +358,16 @@ static void carry_out(ui_outcome_t outcome)
 
     case UI_LOCAL_TOGGLE:
         run_toggle(s_config.local_toggle);
+        break;
+
+    case UI_TURN_ON:
+    case UI_TURN_OFF:
+        run_toggle_to(s_config.toggle_to, outcome == UI_TURN_ON);
+        break;
+
+    case UI_LOCAL_TURN_ON:
+    case UI_LOCAL_TURN_OFF:
+        run_toggle_to(s_config.local_toggle_to, outcome == UI_LOCAL_TURN_ON);
         break;
 
     case UI_OPEN_PAIRING:
@@ -384,8 +403,8 @@ static void carry_out(ui_outcome_t outcome)
         defer_factory_reset();
         break;
 
-    case UI_CONFIRM_CODE:
-        if (shelly_setup_code_confirm()) {
+    case UI_CONFIRM_CHANGE:
+        if (shelly_change_confirm()) {
             status_led_flash_accepted();
         } else {
             status_led_flash_refused();
@@ -420,11 +439,17 @@ static void on_button_action(button_action_t action, void *arg)
 esp_err_t shelly_ui_init(const shelly_ui_config_t *config)
 {
     s_config = *config;
+    shelly_settings_init();
     return button_init(on_button_action, nullptr);
 }
 
-void shelly_ui_switch_changed(void)
+void shelly_ui_switch_changed(bool active)
 {
-    ui_state_t st = current_state(UI_INPUT_SWITCH);
+    ui_state_t st = current_state(UI_INPUT_SWITCH, active);
     carry_out(ui_decide(UI_INPUT_SWITCH, &st));
+}
+
+ui_switch_role_t shelly_ui_switch_role(void)
+{
+    return s_config.switch_role;
 }

@@ -19,7 +19,8 @@ Check that docs/BUTTON-AND-LED.md matches the code and tests, row for row.
 
 The page is the specification of the device UI. Every row has an ID:
 
-  G-xx, H-xx, B-xx, SW-xx  a host test in source/components/test_host/test_ui.c
+  G-xx, H-xx, B-xx, SW-xx, SM-xx
+                           a host test in source/components/test_host/test_ui.c
                            with the same ID and the same words
   LED-xx                   a pattern in shelly_status_led/include/led_patterns.h
   T-xx                     a constant in shelly_button/include/button_logic.h
@@ -37,8 +38,8 @@ TESTS = os.path.join(COMP, "test_host", "test_ui.c")
 PATTERNS = os.path.join(COMP, "shelly_status_led", "include", "led_patterns.h")
 TIMINGS = os.path.join(COMP, "shelly_button", "include", "button_logic.h")
 
-ID_RE = re.compile(r"^(G|H|B|SW|LED|T|P)-\d+$")
-TESTED = ("G", "H", "B", "SW")
+ID_RE = re.compile(r"^(G|H|B|SW|SM|LED|T|P)-\d+$")
+TESTED = ("G", "H", "B", "SW", "SM")
 
 
 def rel(path):
@@ -63,7 +64,7 @@ def doc_rows(errors):
 def test_rows(errors):
     rows = {}
     text = open(TESTS, encoding="utf-8").read()
-    for m in re.finditer(r'\{"((?:G|H|B|SW)-\d+)",((?:\s*"[^"]*",?)+)', text):
+    for m in re.finditer(r'\{"((?:G|H|B|SW|SM)-\d+)",((?:\s*"[^"]*",?)+)', text):
         rid = m.group(1)
         words = re.findall(r'"([^"]*)"', m.group(2))
         if rid in rows:
@@ -133,7 +134,7 @@ def main():
         print(f"UI SPEC CHECK FAILED ({len(errors)} problem(s)). docs/BUTTON-AND-LED.md, the code and "
               f"test_ui.c must change together; see CLAUDE.md.", file=sys.stderr)
         return 1
-    counts = {p: sum(1 for i in doc if i.split("-")[0] == p) for p in ("G", "H", "B", "SW", "LED", "T", "P")}
+    counts = {p: sum(1 for i in doc if i.split("-")[0] == p) for p in ("G", "H", "B", "SW", "SM", "LED", "T", "P")}
     print("UI spec check passed: " + ", ".join(f"{n} {p}" for p, n in counts.items()) + " rows match")
     return 0
 

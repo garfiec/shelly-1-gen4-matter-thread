@@ -62,6 +62,15 @@ bool switch_input_get_level(void)
     return gpio_get_level(SWITCH_INPUT_GPIO) != 0;
 }
 
+bool switch_input_active(bool level)
+{
+#if CONFIG_SHELLY_SWITCH_ACTIVE_HIGH
+    return level;
+#else
+    return !level;
+#endif
+}
+
 static void switch_input_task(void *arg)
 {
     while (true) {

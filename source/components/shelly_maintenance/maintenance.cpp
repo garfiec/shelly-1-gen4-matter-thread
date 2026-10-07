@@ -46,6 +46,7 @@
 
 #include <relay.h>
 #include <shelly_hw_desc.h>
+#include <shelly_settings.h>
 #include <shelly_setup_code.h>
 #include <status_led.h>
 
@@ -281,21 +282,32 @@ static esp_err_t status_get(httpd_req_t *req)
     char code_text[SETUP_CODE_FORMATTED_LEN];
     setup_code_manual_format(code.passcode, code.discriminator, code_text);
     const char *source = !saved ? "test" : code.source == SETUP_CODE_SOURCE_USER ? "yours" : "generated";
-    setup_code_t staged;
+    shelly_change_t change;
     uint32_t secs_left = 0;
+    const char *pending_kind = "null";
     char pending[SETUP_CODE_FORMATTED_LEN + 2] = "null";
-    if (shelly_setup_code_pending(&staged, &secs_left)) {
-        char t[SETUP_CODE_FORMATTED_LEN];
-        setup_code_manual_format(staged.passcode, staged.discriminator, t);
-        snprintf(pending, sizeof(pending), "\"%s\"", t);
+    if (shelly_change_pending(&change, &secs_left)) {
+        if (change.kind == SHELLY_CHANGE_SETUP_CODE) {
+            char t[SETUP_CODE_FORMATTED_LEN];
+            setup_code_manual_format(change.code.passcode, change.code.discriminator, t);
+            snprintf(pending, sizeof(pending), "\"%s\"", t);
+            pending_kind = "\"code\"";
+        } else {
+            snprintf(pending, sizeof(pending), "\"%s\"", ui_switch_mode_name(change.switch_mode));
+            pending_kind = "\"switch\"";
+        }
     }
+    bool has_modes = shelly_ui_switch_role() == UI_SWITCH_TOGGLE;
 
-    char body[512];
+    char body[640];
     snprintf(body, sizeof(body),
              "{\"hw\":\"%s\",\"variant\":\"%s\",\"version\":\"%s\",\"mac\":\"%s\",\"relay\":%s,"
-             "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,\"pending\":%s,\"pending_secs\":%u}",
+             "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,"
+             "\"switch_modes\":%s,\"switch_mode\":\"%s\","
+             "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u}",
              shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text, source,
-             created ? "true" : "false", pending, (unsigned)secs_left);
+             created ? "true" : "false", has_modes ? "true" : "false", ui_switch_mode_name(shelly_switch_mode_get()),
+             pending_kind, pending, (unsigned)secs_left);
     return send_json(req, "200 OK", body);
 }
 
@@ -340,24 +352,37 @@ static int recv_some(httpd_req_t *req, uint8_t *buf, size_t len)
     return HTTPD_SOCK_ERR_TIMEOUT;
 }
 
+// A short POST body, read in full and NUL-terminated. False (and a reply
+// sent) if it is empty, too long or does not arrive.
+static bool read_small_body(httpd_req_t *req, char *text, size_t size, esp_err_t *reply)
+{
+    if (req->content_len == 0 || req->content_len >= size) {
+        *reply = send_result(req, "400 Bad Request", false, "Nothing to save");
+        return false;
+    }
+    size_t got = 0;
+    while (got < req->content_len) {
+        int n = recv_some(req, (uint8_t *)text + got, req->content_len - got);
+        if (n <= 0) {
+            *reply = send_result(req, "400 Bad Request", false, "The request did not arrive; try again");
+            return false;
+        }
+        got += (size_t)n;
+    }
+    text[got] = '\0';
+    return true;
+}
+
 // POST /code/set: the owner's 11-digit code, as typed. It waits for 3
 // presses of the button (docs/BUTTON-AND-LED.md, B-26) before it is saved.
 static esp_err_t code_set_post(httpd_req_t *req)
 {
     touch();
     char text[40];
-    if (req->content_len == 0 || req->content_len >= sizeof(text)) {
-        return send_result(req, "400 Bad Request", false, "Enter the 11-digit code");
+    esp_err_t reply = ESP_OK;
+    if (!read_small_body(req, text, sizeof(text), &reply)) {
+        return reply;
     }
-    size_t got = 0;
-    while (got < req->content_len) {
-        int n = recv_some(req, (uint8_t *)text + got, req->content_len - got);
-        if (n <= 0) {
-            return send_result(req, "400 Bad Request", false, "The code did not arrive; try again");
-        }
-        got += (size_t)n;
-    }
-    text[got] = '\0';
     switch (shelly_setup_code_stage_manual(text)) {
     case SETUP_CODE_OK:
         return send_result(req, "200 OK", true, "");
@@ -381,10 +406,27 @@ static esp_err_t code_new_post(httpd_req_t *req)
     return send_result(req, "200 OK", true, "");
 }
 
-static esp_err_t code_cancel_post(httpd_req_t *req)
+// POST /switch/mode: toggle, push, follow or disabled. It waits for 3
+// presses of the button, like a setup code (B-26).
+static esp_err_t switch_mode_post(httpd_req_t *req)
 {
     touch();
-    shelly_setup_code_cancel();
+    char text[16];
+    esp_err_t reply = ESP_OK;
+    if (!read_small_body(req, text, sizeof(text), &reply)) {
+        return reply;
+    }
+    ui_switch_mode_t mode;
+    if (!ui_switch_mode_parse(text, &mode) || !shelly_switch_mode_stage(mode)) {
+        return send_result(req, "400 Bad Request", false, "This device has no wall switch modes, or that mode is unknown");
+    }
+    return send_result(req, "200 OK", true, "");
+}
+
+static esp_err_t change_cancel_post(httpd_req_t *req)
+{
+    touch();
+    shelly_change_cancel();
     return send_result(req, "200 OK", true, "");
 }
 
@@ -541,7 +583,7 @@ static esp_err_t start_http(void)
     cfg.stack_size = HTTP_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 10;
+    cfg.max_uri_handlers = 12;
     cfg.recv_wait_timeout = 10;
     cfg.send_wait_timeout = 10;
 
@@ -558,7 +600,8 @@ static esp_err_t start_http(void)
         {.uri = "/update", .method = HTTP_POST, .handler = update_post, .user_ctx = nullptr},
         {.uri = "/code/set", .method = HTTP_POST, .handler = code_set_post, .user_ctx = nullptr},
         {.uri = "/code/new", .method = HTTP_POST, .handler = code_new_post, .user_ctx = nullptr},
-        {.uri = "/code/cancel", .method = HTTP_POST, .handler = code_cancel_post, .user_ctx = nullptr},
+        {.uri = "/switch/mode", .method = HTTP_POST, .handler = switch_mode_post, .user_ctx = nullptr},
+        {.uri = "/change/cancel", .method = HTTP_POST, .handler = change_cancel_post, .user_ctx = nullptr},
     };
     for (const httpd_uri_t &uri : uris) {
         err = httpd_register_uri_handler(server, &uri);

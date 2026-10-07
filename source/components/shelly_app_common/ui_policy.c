@@ -19,15 +19,61 @@
 #include "ui_policy.h"
 
 #include <stddef.h>
+#include <string.h>
+
+static const char *const MODE_NAMES[UI_SWITCH_MODE_COUNT] = {
+    [UI_SWITCH_MODE_TOGGLE] = "toggle",
+    [UI_SWITCH_MODE_PUSH] = "push",
+    [UI_SWITCH_MODE_FOLLOW] = "follow",
+    [UI_SWITCH_MODE_DISABLED] = "disabled",
+};
+
+const char *ui_switch_mode_name(ui_switch_mode_t mode)
+{
+    return (unsigned)mode < UI_SWITCH_MODE_COUNT ? MODE_NAMES[mode] : "toggle";
+}
+
+bool ui_switch_mode_parse(const char *name, ui_switch_mode_t *out)
+{
+    if (name == NULL) {
+        return false;
+    }
+    for (int m = 0; m < UI_SWITCH_MODE_COUNT; m++) {
+        if (strcmp(name, MODE_NAMES[m]) == 0) {
+            *out = (ui_switch_mode_t)m;
+            return true;
+        }
+    }
+    return false;
+}
 
 static ui_outcome_t decide_switch(const ui_state_t *st)
 {
     switch (st->switch_role) {
-    case UI_SWITCH_TOGGLE:
-        if (st->maintenance) {
-            return UI_LOCAL_TOGGLE;
+    case UI_SWITCH_TOGGLE: {
+        if (!st->maintenance && !st->started) {
+            return UI_IGNORE;
         }
-        return st->started ? UI_TOGGLE : UI_IGNORE;
+        bool local = st->maintenance;
+        switch (st->switch_mode) {
+        case UI_SWITCH_MODE_TOGGLE:
+            return local ? UI_LOCAL_TOGGLE : UI_TOGGLE;
+        case UI_SWITCH_MODE_PUSH:
+            // A button changes twice per press: act on the press only.
+            if (!st->switch_active) {
+                return UI_IGNORE;
+            }
+            return local ? UI_LOCAL_TOGGLE : UI_TOGGLE;
+        case UI_SWITCH_MODE_FOLLOW:
+            if (st->switch_active) {
+                return local ? UI_LOCAL_TURN_ON : UI_TURN_ON;
+            }
+            return local ? UI_LOCAL_TURN_OFF : UI_TURN_OFF;
+        case UI_SWITCH_MODE_DISABLED:
+        default:
+            return UI_IGNORE;
+        }
+    }
     case UI_SWITCH_CONTACT:
     case UI_SWITCH_BINDING:
     default:
@@ -51,8 +97,8 @@ ui_outcome_t ui_decide(ui_input_t input, const ui_state_t *st)
     case UI_INPUT_PAIRING:
         if (st->maintenance) {
             // Pairing needs Matter. In Wi-Fi mode the presses confirm a
-            // setup-code change made on the page, if one is waiting.
-            return st->code_change_pending ? UI_CONFIRM_CODE : UI_REFUSE;
+            // change made on the page (setup code, switch mode), if one waits.
+            return st->change_pending ? UI_CONFIRM_CHANGE : UI_REFUSE;
         }
         return st->started ? UI_OPEN_PAIRING : UI_REFUSE;
 

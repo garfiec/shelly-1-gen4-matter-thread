@@ -61,6 +61,7 @@ typedef enum {
     LED_PAT_HOLD_RESET,     // Held 10-20 s: release = factory reset
     LED_PAT_REFUSED,        // One-shot: action refused
     LED_PAT_ACCEPTED,       // One-shot: action accepted
+    LED_PAT_UPDATING,       // A Matter update is downloading or installing
     LED_PAT_COUNT,
 } led_pattern_id_t;
 
@@ -81,6 +82,7 @@ static const led_pattern_t LED_PATTERNS[LED_PAT_COUNT] = {
     [LED_PAT_HOLD_RESET]    = {true,  true,  2, {250, 250}},                   // LED-13
     [LED_PAT_REFUSED]       = {true,  false, 6, {100, 100, 100, 100, 100, 100}}, // LED-14
     [LED_PAT_ACCEPTED]      = {true,  false, 1, {600}},                        // LED-15
+    [LED_PAT_UPDATING]      = {true,  true,  2, {1000, 1000}},                 // LED-16
 };
 
 // LED level for a pattern elapsed_ms after it started. For a one-shot

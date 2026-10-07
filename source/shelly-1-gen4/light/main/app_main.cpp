@@ -101,9 +101,14 @@ static bool app_toggle(void)
     return shelly_onoff_toggle(light_endpoint_id);
 }
 
+static bool app_toggle_to(bool on)
+{
+    return shelly_onoff_toggle_to(light_endpoint_id, on);
+}
+
 static void app_switch_changed(bool level, void *arg)
 {
-    shelly_ui_switch_changed();
+    shelly_ui_switch_changed(switch_input_active(level));
 }
 
 extern "C" void app_main()
@@ -127,6 +132,8 @@ extern "C" void app_main()
         shelly_ui_config_t maintenance_ui = {
             .toggle = app_toggle,
             .local_toggle = shelly_local_relay_toggle,
+            .toggle_to = app_toggle_to,
+            .local_toggle_to = shelly_local_relay_toggle_to,
             .switch_role = UI_SWITCH_TOGGLE,
         };
         shelly_ui_init(&maintenance_ui);
@@ -146,6 +153,8 @@ extern "C" void app_main()
     shelly_ui_config_t ui_config = {
         .toggle = app_toggle,
         .local_toggle = shelly_local_relay_toggle,
+        .toggle_to = app_toggle_to,
+        .local_toggle_to = shelly_local_relay_toggle_to,
         .switch_role = UI_SWITCH_TOGGLE,
     };
     shelly_ui_init(&ui_config);

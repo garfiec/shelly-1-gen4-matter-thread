@@ -54,8 +54,8 @@ esp_err_t status_led_init(void);
 
 // Change the base LED state. Safe to call from any task.
 // Priority, highest first: hold hint > one-shot flash > Identify > fault >
-// base, except that the maintenance states (MAINTENANCE, UPLOADING) show
-// over a fault.
+// Matter update > base, except that the maintenance states (MAINTENANCE,
+// UPLOADING) show over a fault.
 void status_led_set_state(led_state_t state);
 
 // Enter Identify mode.
@@ -63,6 +63,10 @@ void status_led_start_identify(void);
 
 // Exit Identify mode. Restores the fault or base state.
 void status_led_stop_identify(void);
+
+// Show (true) or clear (false) the Matter update pattern (LED-16): a
+// download or install is running, keep the device powered.
+void status_led_set_updating(bool active);
 
 // Show (true) or clear (false) the fault pattern. A fault overrides the
 // base state (apart from Wi-Fi maintenance mode) but not Identify.

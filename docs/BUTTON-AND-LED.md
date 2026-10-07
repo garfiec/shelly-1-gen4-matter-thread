@@ -67,7 +67,7 @@ The LED stops showing the device state and shows what releasing now would do. It
 
 ## What the button does
 
-Every gesture in every state. A refused action shows three quick flashes (LED-14). An accepted pairing, Wi-Fi, reset or setup-code request shows one long flash (LED-15).
+Every gesture in every state. A refused action shows three quick flashes (LED-14). An accepted pairing, Wi-Fi, reset or settings request shows one long flash (LED-15).
 
 | ID | State | Gesture | Result | Why |
 |---|---|---|---|---|
@@ -92,13 +92,13 @@ Every gesture in every state. A refused action shows three quick flashes (LED-14
 | B-19 | Normal, built without Wi-Fi mode | Hold 5-10 s | Refused | This build has no Wi-Fi mode |
 | B-20 | Normal, built without Wi-Fi mode | Hold 10-20 s | Factory reset | |
 | B-21 | Wi-Fi maintenance mode | Tap | Toggle, without Matter | The relay switches directly; Home Assistant sees the new state once the device is back in normal mode (P-03) |
-| B-22 | Wi-Fi maintenance mode | 3+ taps | Refused | Pairing needs Matter, which is off in Wi-Fi mode. With a setup-code change waiting on the page, the presses save it instead (B-26) |
+| B-22 | Wi-Fi maintenance mode | 3+ taps | Refused | Pairing needs Matter, which is off in Wi-Fi mode. With a change waiting on the page, the presses save it instead (B-26) |
 | B-23 | Wi-Fi maintenance mode | Hold 5-10 s | Exit Wi-Fi mode | The same gesture that entered it. An upload in progress is abandoned; nothing is installed |
 | B-24 | Wi-Fi maintenance mode | Hold 10-20 s | Factory reset after a restart | The device restarts into normal mode and resets once Matter starts. An upload in progress is abandoned |
-| B-25 | Wi-Fi mode, code change waiting | Tap | Toggle, without Matter | As B-21. The change keeps waiting |
-| B-26 | Wi-Fi mode, code change waiting | 3+ taps | Save the new setup code | The code set or made on the page (see [Save the new setup code](#what-each-action-does)) is saved and used from the next normal boot. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
-| B-27 | Wi-Fi mode, code change waiting | Hold 5-10 s | Exit Wi-Fi mode | The change is dropped; the old code stays |
-| B-28 | Wi-Fi mode, code change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the saved setup code |
+| B-25 | Wi-Fi mode, change waiting | Tap | Toggle, without Matter | As B-21. The change keeps waiting |
+| B-26 | Wi-Fi mode, change waiting | 3+ taps | Save the change | The setup code or wall-switch mode chosen on the page (see [Save the change](#what-each-action-does)) is saved. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
+| B-27 | Wi-Fi mode, change waiting | Hold 5-10 s | Exit Wi-Fi mode | The change is dropped; the old setting stays |
+| B-28 | Wi-Fi mode, change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the saved setup code and switch mode |
 
 "Normal" covers every normal-mode state not listed separately: paired or not, pairing window open or closed, joining Thread or connected, Identify running, or a hardware fault active.
 
@@ -109,8 +109,8 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 | ID | Variant | State | Result | Notes |
 |---|---|---|---|---|
 | SW-01 | Light, Outlet, Mini, 1PM | Booting | Ignored | |
-| SW-02 | Light, Outlet, Mini, 1PM | Normal | Toggle | Every change of the switch toggles, so any switch position works |
-| SW-03 | Light, Outlet, Mini, 1PM | Wi-Fi maintenance mode | Toggle, without Matter | |
+| SW-02 | Light, Outlet, Mini, 1PM | Normal | Toggle | In the default Toggle mode: every change of the switch toggles, so any switch position works. Other modes: see [Wall switch modes](#wall-switch-modes) |
+| SW-03 | Light, Outlet, Mini, 1PM | Wi-Fi maintenance mode | Toggle, without Matter | In the default Toggle mode; see [Wall switch modes](#wall-switch-modes) |
 | SW-04 | Opener | Booting | Ignored | |
 | SW-05 | Opener | Normal | Its own use | The door contact sensor; it never switches the relay |
 | SW-06 | Opener | Wi-Fi maintenance mode | Ignored | |
@@ -118,7 +118,27 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 | SW-08 | Light Switch | Normal | Its own use | Sends On/Off to the bound lights; the button still toggles the local relay |
 | SW-09 | Light Switch | Wi-Fi maintenance mode | Ignored | Bindings need Matter |
 
-A setup-code change waiting on the Wi-Fi mode page doesn't change these rows: the wall switch never confirms it.
+A change waiting on the Wi-Fi mode page doesn't change these rows: the wall switch never confirms it.
+
+### Wall switch modes
+
+The Light, Outlet, Mini and 1PM let you choose what the wall switch does, on the Wi-Fi mode page (saved with 3 presses of the button, B-26). The Opener and Light Switch use SW for their own purpose and have no modes. While booting, the switch is ignored in every mode (SW-01). A build without Wi-Fi mode always uses Toggle, whatever was saved, since it has no page to change it back. The mode is kept through factory resets and updates.
+
+| ID | Mode | Change | Normal | Wi-Fi mode |
+|---|---|---|---|---|
+| SM-01 | Toggle | Either | Toggle | Toggle, without Matter |
+| SM-02 | Push button | Press | Toggle | Toggle, without Matter |
+| SM-03 | Push button | Release | Ignored | Ignored |
+| SM-04 | Follow | To on | Turn on | Turn on, without Matter |
+| SM-05 | Follow | To off | Turn off | Turn off, without Matter |
+| SM-06 | Disabled | Either | Ignored | Ignored |
+
+- **Toggle** (the default): for an ordinary on/off wall switch. Any flip toggles, whichever way the switch points.
+- **Push button:** for a button that springs back (a doorbell-style button). Each press toggles once. If the firmware has the switch's polarity backwards (see below), it toggles on release instead, still once per press.
+- **Follow:** the relay matches the switch: switch on, relay on. It acts on changes only; at power-on the relay follows its power-on setting (P-01), not the switch. It relies on which input level means "switch on", taken from a hardware-tested ESPHome configuration but not verified with this firmware. If Follow runs backwards on your device, build with `CONFIG_SHELLY_SWITCH_ACTIVE_HIGH=n` and please report it.
+- **Disabled:** the switch does nothing. Use it if SW is not wired or picks up noise.
+
+Turn on and Turn off go through the same checks as a toggle: a refused On shows LED-14, and on the 1PM an On clears an overcurrent trip and an Off cancels an overvoltage restore. If the relay is already in the wanted state, nothing happens and nothing flashes: the relay already shows the switch's position. This is the one input with no feedback of its own.
 
 ## What each action does
 
@@ -150,7 +170,7 @@ A setup-code change waiting on the Wi-Fi mode page doesn't change these rows: th
 - **1PM:** the learned mains voltage is cleared too. The energy total is kept.
 - An overcurrent trip survives the reset. The first On from the new controller, or a tap, clears it.
 
-**Save the new setup code.** On the Wi-Fi mode page you can enter your own 11-digit Matter code (for example the one on the Shelly sticker) or make a new random one. Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15) and the new code applies from the next normal boot. The page shows the waiting code and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, the change is dropped. See [Commissioning](COMMISSIONING.md#your-setup-code).
+**Save the change.** On the Wi-Fi mode page you can change two settings: the Matter setup code (enter your own 11-digit code, for example the one on the Shelly sticker, or make a new random one; see [Commissioning](COMMISSIONING.md#your-setup-code)) and, on the Light, Outlet, Mini and 1PM, the [wall switch mode](#wall-switch-modes). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code applies from the next normal boot; a new switch mode applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
 
 **Factory reset after a restart.** The device records the request, restarts, and resets as soon as Matter is up. If Matter never starts, the reset does not happen; reflash over UART.
 
@@ -170,8 +190,9 @@ One LED shows everything. When several things apply at once, the highest wins:
 1. Button hold hint (while held)
 2. One-shot flash (press, refused, accepted)
 3. Identify
-4. Hardware fault, except in Wi-Fi maintenance mode, whose patterns (LED-08, LED-09) show over a fault so you can see that the mode is running
-5. Device state
+4. Hardware fault, except in Wi-Fi maintenance mode, whose patterns (LED-08, LED-09) show over a fault so you can see that the mode is running. A fault also shows over a Matter update, so a trip is never hidden
+5. Matter update downloading or installing (LED-16)
+6. Device state
 
 Timings are in milliseconds. "Repeating" patterns loop; "once" patterns play one time over whatever else is showing.
 
@@ -191,7 +212,8 @@ Timings are in milliseconds. "Repeating" patterns loop; "once" patterns play one
 | LED-12 | on 500, off 500, repeating | Held 5-10 s: release for Wi-Fi mode (or to leave it) |
 | LED-13 | on 250, off 250, repeating | Held 10-20 s: release to factory reset |
 | LED-14 | on 100, off 100, on 100, off 100, on 100, off 100, once | Refused (see [What the button does](#what-the-button-does)) |
-| LED-15 | on 600, once | Accepted: pairing opened, Wi-Fi mode or reset starting, or setup code saved |
+| LED-15 | on 600, once | Accepted: pairing opened, Wi-Fi mode or reset starting, or a setting saved |
+| LED-16 | on 1000, off 1000, repeating | A Matter update is downloading or installing: keep the device powered. It restarts into the new firmware when done. The 5 s hold is refused a little longer (B-15): from the moment the device starts checking for an update until the check or update ends |
 
 ## Timings
 
@@ -207,7 +229,7 @@ Timings are in milliseconds. "Repeating" patterns loop; "once" patterns play one
 ## Keeping this page accurate
 
 This page is the specification, and the code is tested against it.
-- **Test rows:** every G, H, B and SW row is a host test with the same ID and wording, in `source/components/test_host/test_ui.c`.
+- **Test rows:** every G, H, B, SW and SM row is a host test with the same ID and wording, in `source/components/test_host/test_ui.c`.
 - **Code rows:** the LED and T rows are read straight from `led_patterns.h` and `button_logic.h`.
 - **The check:** `scripts/check-ui-spec.py`, run by `source/components/test_host/run.sh`, fails if the page and the code disagree in any row.
 

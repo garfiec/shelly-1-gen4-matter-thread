@@ -34,6 +34,7 @@ The complete button and LED specification is [Button, Switch and LED](BUTTON-AND
 | Slow blink (500 ms on, 1500 ms off) | Joining the Thread network |
 | Solid on | Connected and working |
 | Very fast blink (100 ms on, 100 ms off) | A hardware fault is active. See [Protection and Metering](PROTECTION.md). |
+| Slow even blink (1 s on, 1 s off) | A Matter update is downloading or installing. Keep the device powered. |
 
 ---
 

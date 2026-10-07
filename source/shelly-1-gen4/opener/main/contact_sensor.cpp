@@ -50,7 +50,7 @@ extern uint16_t contact_sensor_endpoint_id;
 // contact_sensor_report() back (the switch_handler in app_main.cpp).
 static void contact_sensor_changed(bool level, void *arg)
 {
-    shelly_ui_switch_changed();
+    shelly_ui_switch_changed(switch_input_active(level));
 }
 
 bool contact_sensor_read_state(void)

@@ -88,6 +88,8 @@ Once the image is loaded, the update is available in two places. Use whichever y
 >
 > Any restart in the first 60 seconds after an update, including a power cut, counts as a failure and rolls back. Leave the device powered for a minute after an update.
 
+While a Matter update downloads and installs, the status LED blinks slowly and evenly, 1 s on and 1 s off (LED-16 in [Button, Switch and LED](BUTTON-AND-LED.md)). Don't unplug the device while it does. It then restarts into the new firmware.
+
 > 💡 **One image updates every matching device.** The provider offers the stored image by vendor and product ID; a single `.ota` updates every device of that variant on your Thread network. Publish once, and each matching device picks it up the next time it checks in.
 
 > **Updating to a release with per-device setup codes.** Your pairings are kept. After the update the device makes its own [setup code](COMMISSIONING.md#your-setup-code), so the shared test code `3497-011-2332` stops working for new pairing windows (3 presses of the button, or adding it to another ecosystem). Read the new code from the Wi-Fi mode page before you need it. If the update rolls back, the older firmware uses the test code again.
@@ -137,7 +139,7 @@ The device returns to normal operation, with Matter and Thread back on, in any o
 A 5 s hold during an upload abandons it: nothing is installed. The relay's state in the mode becomes its previous state, and it then follows its power-on setting from there: with the default Off it turns off, with Previous it keeps that state (see [Button, Switch and LED](BUTTON-AND-LED.md), P-03). [Automatic rollback](#5-install-the-update) applies as for a Matter OTA: leave the device powered for a minute after an update.
 
 While the mode lasts:
-- a tap and the page's Toggle still switch the relay, and so does the wall switch on the Light, Outlet, Mini and 1PM (the Opener's contact and the Light Switch's bindings need Matter and are ignored), but controllers only see the relay's state once the device is back in normal mode;
+- a tap and the page's Toggle still switch the relay, and so does the wall switch on the Light, Outlet, Mini and 1PM, as its [switch mode](BUTTON-AND-LED.md#wall-switch-modes) says (the Opener's contact and the Light Switch's bindings need Matter and are ignored), but controllers only see the relay's state once the device is back in normal mode;
 - Home Assistant shows the device as unavailable;
 - every protection still trips.
 
@@ -146,6 +148,10 @@ While the mode lasts:
 The page also shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. To change it, enter your own 11-digit code (for example from the Shelly sticker) or press **Make a new random code**, then press the device's button 3 times within 2 minutes. The LED gives one long flash and the page confirms. Until you press, nothing changes; after 2 minutes, on Cancel or when you leave the mode, the change is dropped. The new code applies once the device is back in normal operation. Your existing pairings keep working either way.
 
 The network is open, so anyone nearby can read the code while the mode is on. Changing it needs the button presses, which need the device in hand.
+
+### Wall switch mode
+
+On the Light, Outlet, Mini and 1PM, the page also sets what the wall switch wired to SW does: **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position) or **Disabled**. Choose one, press **Save**, then press the device's button 3 times within 2 minutes, as for the setup code. The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
 
 ---
 

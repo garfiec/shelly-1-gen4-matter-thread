@@ -294,13 +294,17 @@ void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook, shelly_
     s_local_toggle_done = done;
 }
 
-bool shelly_onoff_toggle(uint16_t endpoint_id)
+// A local toggle, or with want >= 0 a local set to that value. Shared so a
+// set runs exactly the toggle's lock and hooks. A set to the value already
+// there writes nothing, but still runs the hooks: the user's choice counts
+// (on the 1PM, a switch turned off cancels an overvoltage restore).
+static bool onoff_local_change(uint16_t endpoint_id, int want)
 {
     if (!shelly_app_is_started() || endpoint_id == 0) {
         return false;
     }
     // Read, hook and write under one lock, so a Matter command cannot
-    // change the value between the read and the toggle.
+    // change the value between the read and the write.
     ShellyInputLock lock(SHELLY_INPUT_LOCK_TIMEOUT_MS);
     if (!lock.locked()) {
         ESP_LOGW(TAG, "Matter busy for %d ms: toggle refused", SHELLY_INPUT_LOCK_TIMEOUT_MS);
@@ -314,13 +318,43 @@ bool shelly_onoff_toggle(uint16_t endpoint_id)
     if (attribute::get_val(attribute, &val) != ESP_OK) {
         return false;
     }
+    bool target = want >= 0 ? want != 0 : !val.val.b;
     if (s_local_toggle_hook != nullptr) {
-        s_local_toggle_hook(val.val.b);
+        s_local_toggle_hook(target);
     }
-    val.val.b = !val.val.b;
-    // The PRE_UPDATE callback drives the relay; its refusal (thermal
-    // lockout, protection) comes back here and leaves the attribute as is.
-    bool accepted = attribute::update(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &val) == ESP_OK;
+    // Nothing to write: report whether the relay really is there, so a
+    // hook that cleared the 1PM latch re-arms it if the relay is off.
+    bool accepted = relay_get() == target;
+    if (val.val.b != target) {
+        val.val.b = target;
+        // The PRE_UPDATE callback drives the relay; its refusal (thermal
+        // lockout, protection) comes back here and leaves the attribute as is.
+        accepted = attribute::update(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &val) == ESP_OK;
+    }
+    if (s_local_toggle_done != nullptr) {
+        s_local_toggle_done(accepted);
+    }
+    return accepted;
+}
+
+bool shelly_onoff_toggle(uint16_t endpoint_id)
+{
+    return onoff_local_change(endpoint_id, -1);
+}
+
+bool shelly_onoff_toggle_to(uint16_t endpoint_id, bool on)
+{
+    return onoff_local_change(endpoint_id, on ? 1 : 0);
+}
+
+static bool local_relay_change(int want)
+{
+    bool on = relay_get();
+    bool target = want >= 0 ? want != 0 : !on;
+    if (s_local_toggle_hook != nullptr) {
+        s_local_toggle_hook(target);
+    }
+    bool accepted = on == target || relay_set(target) == ESP_OK;
     if (s_local_toggle_done != nullptr) {
         s_local_toggle_done(accepted);
     }
@@ -329,15 +363,12 @@ bool shelly_onoff_toggle(uint16_t endpoint_id)
 
 bool shelly_local_relay_toggle(void)
 {
-    bool on = relay_get();
-    if (s_local_toggle_hook != nullptr) {
-        s_local_toggle_hook(on);
-    }
-    bool accepted = relay_set(!on) == ESP_OK;
-    if (s_local_toggle_done != nullptr) {
-        s_local_toggle_done(accepted);
-    }
-    return accepted;
+    return local_relay_change(-1);
+}
+
+bool shelly_local_relay_toggle_to(bool on)
+{
+    return local_relay_change(on ? 1 : 0);
 }
 
 void shelly_onoff_set(uint16_t endpoint_id, bool on)

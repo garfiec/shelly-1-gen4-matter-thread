@@ -52,8 +52,12 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 
 <section>
 <div class="row">
-<div><h2 style="margin:0">Relay</h2><span id="relay">…</span></div>
+<div><h2 style="margin:0" id="relaytitle">Relay</h2><span id="relay">…</span></div>
 <button id="toggle">Toggle</button>
+</div>
+<div class="row" id="relay2row" style="margin-top:10px" hidden>
+<div><h2 style="margin:0">Relay 2</h2><span id="relay2">…</span></div>
+<button id="toggle2">Toggle</button>
 </div>
 <div id="relaymsg" class="msg"></div>
 </section>
@@ -73,14 +77,31 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 </section>
 
 <section id="switchcard" hidden>
-<h2>Wall switch</h2>
-<p class="muted" style="margin:0 0 8px">What the switch wired to SW does. Now: <b id="swnow">…</b></p>
+<h2 id="swtitle">Wall switch</h2>
+<p class="muted" style="margin:0 0 8px" id="swlead">What the switch wired to SW does. Now: <b id="swnow">…</b></p>
 <label class="check"><input type="radio" name="swmode" value="toggle"> <span><b>Toggle</b> — an ordinary on/off switch: any flip toggles the relay</span></label>
 <label class="check"><input type="radio" name="swmode" value="push"> <span><b>Push button</b> — a button that springs back: each press toggles once</span></label>
 <label class="check"><input type="radio" name="swmode" value="follow"> <span><b>Follow</b> — the relay matches the switch: switch on, relay on</span></label>
 <label class="check"><input type="radio" name="swmode" value="disabled"> <span><b>Disabled</b> — the switch does nothing</span></label>
 <button id="setswitch">Save</button>
 <div id="switchmsg" class="msg"></div>
+</section>
+
+<section id="switchcard2" hidden>
+<h2>Wall switch 2 (SW2)</h2>
+<p class="muted" style="margin:0 0 8px">What the switch wired to SW2 does, for relay 2. Now: <b id="swnow2">…</b></p>
+<label class="check"><input type="radio" name="swmode2" value="toggle"> <span><b>Toggle</b> — any flip toggles relay 2</span></label>
+<label class="check"><input type="radio" name="swmode2" value="push"> <span><b>Push button</b> — each press toggles relay 2 once</span></label>
+<label class="check"><input type="radio" name="swmode2" value="follow"> <span><b>Follow</b> — relay 2 matches the switch</span></label>
+<label class="check"><input type="radio" name="swmode2" value="disabled"> <span><b>Disabled</b> — the switch does nothing</span></label>
+<button id="setswitch2">Save</button>
+<div id="switchmsg2" class="msg"></div>
+</section>
+
+<section id="hwcard" hidden>
+<h2>Hardware data</h2>
+<div class="muted" style="margin:0 0 8px">What the board read, for bringing up its support. <a href="/hw.json" target="_blank">Raw data</a></div>
+<dl id="hwlist"></dl>
 </section>
 
 <section class="pending" id="pendingbox" hidden>
@@ -110,7 +131,45 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 <script>
 var $ = function (id) { return document.getElementById(id); };
 var busy = false;
-var waiting = null, swTouched = false;
+var waiting = null, swTouched = false, swTouched2 = false, hwPolls = 0;
+var RESET_REASONS = { 1: 'power on', 3: 'software restart', 4: 'crash', 5: 'interrupt watchdog', 6: 'task watchdog', 7: 'watchdog', 9: 'brownout' };
+function onOff(a) { return (a || []).map(function (b) { return b ? 'on' : 'off'; }).join(' / '); }
+function hiLo(a) { return (a || []).map(function (b) { return b ? 'high' : 'low'; }).join(' / '); }
+function temp(c) { return c === null || c === undefined ? '–' : c.toFixed(1) + ' °C'; }
+function s32(h) { var v = parseInt(h, 16); return v > 0x7fffffff ? v - 0x100000000 : v; }
+function hwRow(dl, k, v) { var dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; dl.appendChild(dt); dl.appendChild(dd); }
+function hwRefresh() {
+  fetch('/hw.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (h) {
+    var dl = $('hwlist'); dl.innerHTML = '';
+    var l = h.live, b = h.last_boot;
+    if (l) {
+      hwRow(dl, 'Relays now', onOff(l.relay) + ' (pins ' + hiLo(l.relay_pin) + ')');
+      hwRow(dl, 'Switch pins now', hiLo(l.sw_pin));
+      hwRow(dl, 'Button pin now', l.button_pin ? 'high' : 'low');
+      hwRow(dl, 'Board sensor now', temp(l.ntc_c) + ' (' + l.ntc_mv + ' mV, raw ' + l.ntc_raw + ')');
+      hwRow(dl, 'Chip sensor now', temp(l.die_c));
+    }
+    if (!b) { hwRow(dl, 'Last normal run', 'No data (a power cut clears it)'); return; }
+    hwRow(dl, 'Last normal run', 'boot ' + b.boots + ', ' + (RESET_REASONS[b.reset_reason] || 'reason ' + b.reset_reason) + ', up ' + b.uptime_s + ' s');
+    hwRow(dl, 'Memory', Math.round(b.heap_free / 1024) + ' KB free, lowest ' + Math.round(b.heap_min / 1024) + ' KB');
+    hwRow(dl, 'Switch changes seen', (b.sw_edges || []).join(' / '));
+    hwRow(dl, 'Temperatures', 'board ' + temp(b.ntc_c) + ', chip ' + temp(b.die_c) + (b.overtemp ? ', OVER TEMPERATURE' : ''));
+    var m = b.meter, r = m.regs || {};
+    hwRow(dl, 'Power meter', m.state + (m.error ? ' (error ' + m.error + ')' : '') + (r['0x702'] ? ', version ' + r['0x702'] : ''));
+    if (r['0x31C']) {
+      // Estimates with ESPHome's scaling and the calibration measured on this board model.
+      var v = parseInt(r['0x31C'], 16) / 26000 * 0.9811;
+      var f = r['0x10E'] ? 223750 / (parseInt(r['0x10E'], 16) + 1) : 0;
+      var ia = r['0x31A'] ? parseInt(r['0x31A'], 16) / 100000 * 3.747 : 0;
+      var ib = r['0x31B'] ? parseInt(r['0x31B'], 16) / 100000 * 3.808 : 0;
+      var pa = r['0x312'] ? s32(r['0x312']) / 154 * -3.679 : 0;
+      var pb = r['0x313'] ? s32(r['0x313']) / 154 * -3.718 : 0;
+      hwRow(dl, 'Meter estimate', v.toFixed(1) + ' V, ' + f.toFixed(2) + ' Hz');
+      hwRow(dl, 'Channel 1 estimate', ia.toFixed(3) + ' A, ' + pa.toFixed(1) + ' W');
+      hwRow(dl, 'Channel 2 estimate', ib.toFixed(3) + ' A, ' + pb.toFixed(1) + ' W');
+    }
+  }).catch(function () {});
+}
 var MODE_NAMES = { toggle: 'Toggle', push: 'Push button', follow: 'Follow', disabled: 'Disabled' };
 function msg(el, text, kind) { el.textContent = text; el.className = 'msg' + (kind ? ' ' + kind : ''); }
 function refresh() {
@@ -118,6 +177,21 @@ function refresh() {
   fetch('/status', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (s) {
     $('hw').textContent = s.hw; $('variant').textContent = s.variant; $('version').textContent = s.version;
     $('mac').textContent = s.mac; $('relay').textContent = s.relay ? 'On' : 'Off';
+    var two = s.channels > 1;
+    $('relaytitle').textContent = two ? 'Relay 1' : 'Relay';
+    $('relay2row').hidden = !two;
+    $('relay2').textContent = s.relay2 ? 'On' : 'Off';
+    $('swtitle').textContent = two ? 'Wall switch 1 (SW1)' : 'Wall switch';
+    $('swlead').firstChild.textContent = two ? 'What the switch wired to SW1 does, for relay 1. Now: ' : 'What the switch wired to SW does. Now: ';
+    $('switchcard2').hidden = !(two && s.switch_modes);
+    $('swnow2').textContent = MODE_NAMES[s.switch_mode2] || s.switch_mode2;
+    if (!swTouched2) {
+      var r2 = document.querySelector('input[name=swmode2][value=' + s.switch_mode2 + ']');
+      if (r2) r2.checked = true;
+    }
+    $('hwcard').hidden = !s.hw_data;
+    // The snapshot changes every 10 s at most: no need to rebuild it on every poll.
+    if (s.hw_data && (hwPolls++ % 5 === 0)) hwRefresh();
     $('code').textContent = s.code;
     $('codesrc').textContent = s.code_source === 'yours' ? 'Your code' :
       s.code_source === 'test' ? 'The shared test code: this device could not save its own code' :
@@ -133,33 +207,39 @@ function refresh() {
     $('pendingbox').hidden = !p;
     if (p) {
       var isCode = s.pending_kind === 'code';
-      $('pendingwhat').textContent = isCode ? 'New setup code' : 'New wall switch mode:';
+      $('pendingwhat').textContent = isCode ? 'New setup code' :
+        (s.channels > 1 ? 'New wall switch ' + s.pending_ch + ' mode:' : 'New wall switch mode:');
       $('pendingval').textContent = isCode ? p : (MODE_NAMES[p] || p);
       $('pendingnote').textContent = isCode ?
         'Nothing changes until you press. The new code applies once the device is back in normal operation.' :
         'Nothing changes until you press. The new mode applies at once.';
       $('pendingsecs').textContent = Math.floor(s.pending_secs / 60) + ':' + ('0' + s.pending_secs % 60).slice(-2);
-      waiting = { kind: s.pending_kind, value: p };
+      waiting = { kind: s.pending_kind, value: p, ch: s.pending_ch };
     } else if (waiting) {
       var w = waiting; waiting = null;
       if (w.kind === 'code') {
         if (s.code === w.value) msg($('codemsg'), 'Saved. Pair with ' + s.code + ' once you exit.', 'good');
         else msg($('codemsg'), 'The change was not saved. The code is still ' + s.code + '.', 'bad');
       } else {
-        swTouched = false;
-        if (s.switch_mode === w.value) msg($('switchmsg'), 'Saved: ' + MODE_NAMES[s.switch_mode] + '.', 'good');
-        else msg($('switchmsg'), 'The change was not saved. The switch is still ' + (MODE_NAMES[s.switch_mode] || s.switch_mode) + '.', 'bad');
+        var second = w.ch === 2;
+        var now = second ? s.switch_mode2 : s.switch_mode;
+        var out = second ? $('switchmsg2') : $('switchmsg');
+        if (second) swTouched2 = false; else swTouched = false;
+        if (now === w.value) msg(out, 'Saved: ' + MODE_NAMES[now] + '.', 'good');
+        else msg(out, 'The change was not saved. The switch is still ' + (MODE_NAMES[now] || now) + '.', 'bad');
       }
     }
   }).catch(function () {});
 }
 setInterval(refresh, 2000); refresh();
 $('file').onchange = function () { $('upload').disabled = !$('file').files.length; msg($('upmsg'), ''); };
-$('toggle').onclick = function () {
-  fetch('/toggle', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (j) {
+function toggle(body) {
+  fetch('/toggle', { method: 'POST', body: body }).then(function (r) { return r.json(); }).then(function (j) {
     msg($('relaymsg'), j.ok ? '' : j.msg, j.ok ? '' : 'bad'); refresh();
   }).catch(function () { msg($('relaymsg'), 'No response from the device', 'bad'); });
-};
+}
+$('toggle').onclick = function () { toggle(''); };
+$('toggle2').onclick = function () { toggle('2'); };
 function post(url, body, out) {
   msg(out, '');
   fetch(url, { method: 'POST', body: body || '' }).then(function (r) { return r.json(); }).then(function (j) {
@@ -174,9 +254,14 @@ $('setswitch').onclick = function () {
   var r = document.querySelector('input[name=swmode]:checked');
   if (r) post('/switch/mode', r.value, $('switchmsg'));
 };
+document.querySelectorAll('input[name=swmode2]').forEach(function (r) { r.onchange = function () { swTouched2 = true; }; });
+$('setswitch2').onclick = function () {
+  var r = document.querySelector('input[name=swmode2]:checked');
+  if (r) post('/switch/mode', '2:' + r.value, $('switchmsg2'));
+};
 $('cancelchange').onclick = function () {
-  var out = waiting && waiting.kind === 'switch' ? $('switchmsg') : $('codemsg');
-  waiting = null; swTouched = false; post('/change/cancel', '', out);
+  var out = waiting && waiting.kind === 'switch' ? (waiting.ch === 2 ? $('switchmsg2') : $('switchmsg')) : $('codemsg');
+  waiting = null; swTouched = false; swTouched2 = false; post('/change/cancel', '', out);
 };
 $('diagclear').onclick = function (e) {
   e.preventDefault();

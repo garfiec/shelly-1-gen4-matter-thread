@@ -12,4 +12,4 @@ idf_component_register(SRCS ${srcs}
                        EMBED_TXTFILES ${embed}
                        REQUIRES shelly_app_common
                        PRIV_REQUIRES esp_system esp_wifi esp_netif esp_event esp_http_server esp_timer app_update lwip
-                                     shelly_relay shelly_status_led)
+                                     shelly_relay shelly_status_led shelly_hw_snapshot)

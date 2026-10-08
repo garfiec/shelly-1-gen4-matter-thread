@@ -27,7 +27,7 @@
 //
 // Gestures, all acted on at release, never while held:
 //   tap (released before BUTTON_TAP_MAX_MS), then no press for
-//   BUTTON_MULTI_GAP_MS          -> TOGGLE (1 or 2 taps) or PAIRING (3+)
+//   BUTTON_MULTI_GAP_MS          -> TOGGLE (1 tap), DOUBLE_TAP (2) or PAIRING (3+)
 //   hold released at 5-10 s      -> WIFI_MODE
 //   hold released at 10-20 s     -> FACTORY_RESET
 //   hold released at 1-5 s, 20 s+ -> nothing (a 20 s+ hold cancels)
@@ -55,6 +55,7 @@ typedef enum {
     BUTTON_ACTION_PAIRING,
     BUTTON_ACTION_WIFI_MODE,
     BUTTON_ACTION_FACTORY_RESET,
+    BUTTON_ACTION_DOUBLE_TAP,   // Exactly 2 taps (toggles relay 2 on a 2-channel board)
 } button_action_t;
 
 // What releasing now would do, for the LED while the button is held.

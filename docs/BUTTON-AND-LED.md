@@ -4,7 +4,7 @@
 
 The button on the device and its LED are the device's only local interface. This page is the complete specification: what every input does in every state, and what every LED pattern means. It applies to every device and variant this firmware supports. Where a variant differs, the tables say so.
 
-> **Quick card.** Tap: on/off · Press 3×: pairing · Hold 5 s: Wi-Fi mode · Hold 10 s: factory reset · Keep holding past 20 s: cancel
+> **Quick card.** Tap: on/off · Press 3×: pairing · Hold 5 s: Wi-Fi mode · Hold 10 s: factory reset · Keep holding past 20 s: cancel · 2PM: tap for relay 1, press 2× for relay 2
 >
 > Nothing happens while you hold. The LED shows what letting go will do, and the action happens when you release.
 
@@ -26,12 +26,12 @@ The gestures and their timings match stock Shelly firmware ([Shelly KB](https://
 
 ## Gestures
 
-The button recognizes four gestures. A press shorter than 1 s is a tap. Taps less than 300 ms apart count together. Everything else is a hold, timed from press to release.
+The button recognizes these gestures: a tap, 2 taps, 3 or more taps, and holds. A press shorter than 1 s is a tap. Taps less than 300 ms apart count together. Everything else is a hold, timed from press to release.
 
 | ID | You do | Gesture |
 |---|---|---|
 | G-01 | 1 press, released before 1 s | Tap |
-| G-02 | 2 presses less than 300 ms apart | Tap |
+| G-02 | 2 presses less than 300 ms apart | 2 taps |
 | G-03 | 3 presses less than 300 ms apart | 3+ taps |
 | G-04 | 5 presses less than 300 ms apart | 3+ taps |
 | G-05 | 2 presses 500 ms apart | Tap, Tap |
@@ -44,9 +44,10 @@ The button recognizes four gestures. A press shorter than 1 s is a tap. Taps les
 | G-12 | Hold 15 s | Hold 10-20 s |
 | G-13 | Hold 20 s or longer | Nothing |
 | G-14 | 2 presses, then a 6 s hold less than 300 ms later | Hold 5-10 s |
+| G-15 | 2 presses less than 300 ms apart, a third 500 ms later | 2 taps, Tap |
 
 - A tap acts about 0.3 s after you let go, once no further press follows. That wait is what lets 3 presses open pairing without switching the load three times.
-- 2 quick taps toggle once, not twice.
+- 2 quick taps toggle relay 2 on the 2PM. On every other device they toggle once, like a tap, not twice.
 - A hold of 1-5 s does nothing, so a slow press never switches or resets anything by accident.
 - Holding past 20 s cancels whatever the hold was about to do.
 - A hold that follows taps discards the taps.
@@ -99,6 +100,13 @@ Every gesture in every state. A refused action shows three quick flashes (LED-14
 | B-26 | Wi-Fi mode, change waiting | 3+ taps | Save the change | The setup code or wall-switch mode chosen on the page (see [Save the change](#what-each-action-does)) is saved. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
 | B-27 | Wi-Fi mode, change waiting | Hold 5-10 s | Exit Wi-Fi mode | The change is dropped; the old setting stays |
 | B-28 | Wi-Fi mode, change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the saved setup code and switch mode |
+| B-29 | Booting | 2 taps | Refused | As B-01 |
+| B-30 | Normal | 2 taps | Toggle | Relay 2 on the 2PM; on other devices the same as a tap (relay 1) |
+| B-31 | First 60 s after an update | 2 taps | Toggle | As B-30 |
+| B-32 | Matter update downloading | 2 taps | Toggle | As B-30 |
+| B-33 | Normal, built without Wi-Fi mode | 2 taps | Toggle | As B-30 |
+| B-34 | Wi-Fi maintenance mode | 2 taps | Toggle, without Matter | As B-30, without Matter (B-21) |
+| B-35 | Wi-Fi mode, change waiting | 2 taps | Toggle, without Matter | As B-34. The change keeps waiting |
 
 "Normal" covers every normal-mode state not listed separately: paired or not, pairing window open or closed, joining Thread or connected, Identify running, or a hardware fault active.
 
@@ -108,21 +116,24 @@ The SW terminal. It never resets the device, never opens pairing, and never ente
 
 | ID | Variant | State | Result | Notes |
 |---|---|---|---|---|
-| SW-01 | Light, Outlet, Mini, 1PM | Booting | Ignored | |
-| SW-02 | Light, Outlet, Mini, 1PM | Normal | Toggle | In the default Toggle mode: every change of the switch toggles, so any switch position works. Other modes: see [Wall switch modes](#wall-switch-modes) |
-| SW-03 | Light, Outlet, Mini, 1PM | Wi-Fi maintenance mode | Toggle, without Matter | In the default Toggle mode; see [Wall switch modes](#wall-switch-modes) |
+| SW-01 | Light, Outlet, Mini, 1PM, 2PM SW1 | Booting | Ignored | |
+| SW-02 | Light, Outlet, Mini, 1PM, 2PM SW1 | Normal | Toggle | In the default Toggle mode: every change of the switch toggles, so any switch position works. Other modes: see [Wall switch modes](#wall-switch-modes) |
+| SW-03 | Light, Outlet, Mini, 1PM, 2PM SW1 | Wi-Fi maintenance mode | Toggle, without Matter | In the default Toggle mode; see [Wall switch modes](#wall-switch-modes) |
 | SW-04 | Opener | Booting | Ignored | |
 | SW-05 | Opener | Normal | Its own use | The door contact sensor; it never switches the relay |
 | SW-06 | Opener | Wi-Fi maintenance mode | Ignored | |
 | SW-07 | Light Switch | Booting | Ignored | |
 | SW-08 | Light Switch | Normal | Its own use | Sends On/Off to the bound lights; the button still toggles the local relay |
 | SW-09 | Light Switch | Wi-Fi maintenance mode | Ignored | Bindings need Matter |
+| SW-10 | 2PM SW2 | Booting | Ignored | |
+| SW-11 | 2PM SW2 | Normal | Toggle | Relay 2, in SW2's own mode. SW1 drives relay 1 (SW-02) |
+| SW-12 | 2PM SW2 | Wi-Fi maintenance mode | Toggle, without Matter | Relay 2, in SW2's own mode |
 
 A change waiting on the Wi-Fi mode page doesn't change these rows: the wall switch never confirms it.
 
 ### Wall switch modes
 
-The Light, Outlet, Mini and 1PM let you choose what the wall switch does, on the Wi-Fi mode page (saved with 3 presses of the button, B-26). The Opener and Light Switch use SW for their own purpose and have no modes. While booting, the switch is ignored in every mode (SW-01). A build without Wi-Fi mode always uses Toggle, whatever was saved, since it has no page to change it back. The mode is kept through factory resets and updates.
+The Light, Outlet, Mini, 1PM and 2PM let you choose what the wall switch does, on the Wi-Fi mode page (saved with 3 presses of the button, B-26). The Opener and Light Switch use SW for their own purpose and have no modes. While booting, the switch is ignored in every mode (SW-01). A build without Wi-Fi mode always uses Toggle, whatever was saved, since it has no page to change it back. The mode is kept through factory resets and updates. On the 2PM each input has its own mode, and each drives its own relay: SW1 relay 1, SW2 relay 2.
 
 | ID | Mode | Change | Normal | Wi-Fi mode |
 |---|---|---|---|---|
@@ -143,7 +154,7 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 ## What each action does
 
 **Toggle.** Flips the relay through Matter, so every controller sees the change.
-- If the relay refuses to turn on, the LED shows the refusal flash (LED-14). It refuses during over-temperature, when the temperature sensor has failed, and on the 1PM during overvoltage and for 2 s after a protection trip. See [Protection and Metering](PROTECTION.md).
+- If the relay refuses to turn on, the LED shows the refusal flash (LED-14). It refuses during over-temperature, when the temperature sensor has failed, and on the 1PM during overvoltage and for 2 s after a protection trip. On the 2PM an over-temperature trip turns both relays off, and both refuse to turn on until it clears. See [Protection and Metering](PROTECTION.md).
 - If Matter stays busy for 2 s (for example while it is pairing), the toggle is refused too (LED-14) rather than acting late. The same applies to the Wi-Fi mode hold.
 - **1PM:** a tap or switch change that turns the relay on clears an overcurrent trip. One that turns it off during an overvoltage trip cancels the automatic restore.
 - **Opener:** a toggle is a 500 ms pulse. A tap during the pulse ends it.
@@ -170,7 +181,7 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 - **1PM:** the learned mains voltage is cleared too. The energy total is kept.
 - An overcurrent trip survives the reset. The first On from the new controller, or a tap, clears it.
 
-**Save the change.** On the Wi-Fi mode page you can change two settings: the Matter setup code (enter your own 11-digit code, for example the one on the Shelly sticker, or make a new random one; see [Commissioning](COMMISSIONING.md#your-setup-code)) and, on the Light, Outlet, Mini and 1PM, the [wall switch mode](#wall-switch-modes). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code applies from the next normal boot; a new switch mode applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
+**Save the change.** On the Wi-Fi mode page you can change two settings: the Matter setup code (enter your own 11-digit code, for example the one on the Shelly sticker, or make a new random one; see [Commissioning](COMMISSIONING.md#your-setup-code)) and, on the Light, Outlet, Mini, 1PM and 2PM, the [wall switch mode](#wall-switch-modes) (on the 2PM, SW1's and SW2's separately). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code applies from the next normal boot; a new switch mode applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
 
 **Factory reset after a restart.** The device records the request, restarts, and resets as soon as Matter is up. If Matter never starts, the reset does not happen; reflash over UART.
 
@@ -178,7 +189,7 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 
 | ID | Situation | Relay | LED |
 |---|---|---|---|
-| P-01 | Power-on, or any restart into normal mode | Follows StartUpOnOff: default Off. The Opener is always Off. A 1PM with an overcurrent trip stays Off. | Off while booting, then the state |
+| P-01 | Power-on, or any restart into normal mode | Follows StartUpOnOff (each relay its own on the 2PM): default Off. The Opener is always Off. A 1PM with an overcurrent trip stays Off. | Off while booting, then the state |
 | P-02 | Restart into Wi-Fi mode | Back to its state before the restart, after a brief off | Wi-Fi mode double blink (LED-08) |
 | P-03 | Exit from Wi-Fi mode | Follows StartUpOnOff, as P-01, from its state in Wi-Fi mode: with Previous it keeps that state | Off while booting, then the state |
 | P-04 | After a factory reset | Off | Pairing blink (LED-02) |

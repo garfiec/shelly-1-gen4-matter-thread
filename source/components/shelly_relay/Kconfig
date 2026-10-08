@@ -1,0 +1,21 @@
+menu "Shelly relay"
+
+    config SHELLY_CHANNELS
+        int "Relay channels"
+        range 1 2
+        default 1
+        help
+            How many relays (and wall switch inputs) the board has. 1 for the
+            Shelly 1, 1PM and Mini; 2 for the 2PM. The second relay's and
+            switch's pins are SHELLY_RELAY2_GPIO and SHELLY_SWITCH2_GPIO in the
+            variant's "Shelly board" menu.
+
+    config SHELLY_RELAY_READBACK
+        bool "Read the relay pins back"
+        default n
+        help
+            Configure the relay pins as input and output so the diagnostics
+            snapshot can show that each pad follows what was written. Does
+            not change what the relay does.
+
+endmenu

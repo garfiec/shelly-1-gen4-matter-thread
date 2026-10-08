@@ -89,6 +89,7 @@ ui_outcome_t ui_decide(ui_input_t input, const ui_state_t *st)
     }
     switch (input) {
     case UI_INPUT_TAP:
+    case UI_INPUT_TAP2:
         if (st->maintenance) {
             return UI_LOCAL_TOGGLE;
         }
@@ -128,5 +129,21 @@ ui_outcome_t ui_decide(ui_input_t input, const ui_state_t *st)
 
     default:
         return UI_IGNORE;
+    }
+}
+
+uint8_t ui_decide_channel(ui_input_t input, const ui_state_t *st)
+{
+    if (st == NULL) {
+        return 0;
+    }
+    uint8_t channels = st->channels == 0 ? 1 : st->channels;
+    switch (input) {
+    case UI_INPUT_TAP2:
+        return channels > 1 ? 1 : 0;
+    case UI_INPUT_SWITCH:
+        return st->switch_channel < channels ? st->switch_channel : 0;
+    default:
+        return 0;
     }
 }

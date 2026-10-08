@@ -324,6 +324,27 @@ void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook, shelly_
     s_local_toggle_done = done;
 }
 
+// Relay endpoints after the first (index = channel - 1). Every other
+// endpoint is channel 0, so single-relay variants register nothing.
+static uint16_t s_extra_relay_endpoints[RELAY_CHANNELS > 1 ? RELAY_CHANNELS - 1 : 1];
+
+void shelly_relay_endpoint_register(int ch, uint16_t endpoint_id)
+{
+    if (ch >= 1 && ch < RELAY_CHANNELS) {
+        s_extra_relay_endpoints[ch - 1] = endpoint_id;
+    }
+}
+
+int shelly_relay_endpoint_channel(uint16_t endpoint_id)
+{
+    for (int ch = 1; ch < RELAY_CHANNELS; ch++) {
+        if (endpoint_id != 0 && s_extra_relay_endpoints[ch - 1] == endpoint_id) {
+            return ch;
+        }
+    }
+    return 0;
+}
+
 // A local toggle, or with want >= 0 a local set to that value. Shared so a
 // set runs exactly the toggle's lock and hooks. A set to the value already
 // there writes nothing, but still runs the hooks: the user's choice counts
@@ -354,7 +375,7 @@ static bool onoff_local_change(uint16_t endpoint_id, int want)
     }
     // Nothing to write: report whether the relay really is there, so a
     // hook that cleared the 1PM latch re-arms it if the relay is off.
-    bool accepted = relay_get() == target;
+    bool accepted = relay_get_ch(shelly_relay_endpoint_channel(endpoint_id)) == target;
     if (val.val.b != target) {
         val.val.b = target;
         // The PRE_UPDATE callback drives the relay; its refusal (thermal
@@ -377,28 +398,38 @@ bool shelly_onoff_toggle_to(uint16_t endpoint_id, bool on)
     return onoff_local_change(endpoint_id, on ? 1 : 0);
 }
 
-static bool local_relay_change(int want)
+static bool local_relay_change(int ch, int want)
 {
-    bool on = relay_get();
+    bool on = relay_get_ch(ch);
     bool target = want >= 0 ? want != 0 : !on;
     if (s_local_toggle_hook != nullptr) {
         s_local_toggle_hook(target);
     }
-    bool accepted = on == target || relay_set(target) == ESP_OK;
+    bool accepted = on == target || relay_set_ch(ch, target) == ESP_OK;
     if (s_local_toggle_done != nullptr) {
         s_local_toggle_done(accepted);
     }
     return accepted;
 }
 
+bool shelly_local_relay_toggle_ch(int ch)
+{
+    return local_relay_change(ch, -1);
+}
+
+bool shelly_local_relay_toggle_to_ch(int ch, bool on)
+{
+    return local_relay_change(ch, on ? 1 : 0);
+}
+
 bool shelly_local_relay_toggle(void)
 {
-    return local_relay_change(-1);
+    return local_relay_change(0, -1);
 }
 
 bool shelly_local_relay_toggle_to(bool on)
 {
-    return local_relay_change(on ? 1 : 0);
+    return local_relay_change(0, on ? 1 : 0);
 }
 
 void shelly_onoff_set(uint16_t endpoint_id, bool on)

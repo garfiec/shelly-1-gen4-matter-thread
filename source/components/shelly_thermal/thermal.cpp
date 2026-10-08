@@ -58,7 +58,8 @@ static const char *TAG = "thermal";
 // updates run on the Matter thread, not here.
 #define THERMAL_TASK_STACK_SIZE 4096
 
-static uint16_t s_relay_endpoint_id = 0;
+// Relay endpoints to report Off on a trip, by channel.
+static uint16_t s_relay_endpoint_ids[RELAY_CHANNELS];
 static uint16_t s_temperature_endpoint_id = 0;
 
 // Die sensor.
@@ -117,6 +118,25 @@ static bool read_die(float *temp)
     return false;
 }
 
+// The latest readings for diagnostics, copied out under a spinlock.
+static portMUX_TYPE s_readings_mux = portMUX_INITIALIZER_UNLOCKED;
+static thermal_readings_t s_readings = {
+    .die_c = NAN,
+    .die_ok = false,
+    .ntc_raw = -1,
+    .ntc_mv = -1,
+    .ntc_c = NAN,
+    .ntc_ok = false,
+    .ntc_status = 0,
+    .governing_ntc = false,
+    .overtemp = false,
+    .no_sensor = false,
+};
+#ifdef CONFIG_SHELLY_HAS_NTC
+static int s_ntc_last_raw = -1;
+static int s_ntc_last_mv = -1;
+#endif
+
 #ifdef CONFIG_SHELLY_HAS_NTC
 // Returns false if the ADC could not be read at all.
 static bool read_ntc(ntc_status_t *status, float *temp)
@@ -125,11 +145,13 @@ static bool read_ntc(ntc_status_t *status, float *temp)
         return false;
     }
     int sum_mv = 0;
+    int sum_raw = 0;
     for (int i = 0; i < NTC_SAMPLES; i++) {
         int raw = 0;
         if (adc_oneshot_read(ntc_adc, ntc_channel, &raw) != ESP_OK) {
             return false;
         }
+        sum_raw += raw;
         int mv = 0;
         if (ntc_cali == NULL || adc_cali_raw_to_voltage(ntc_cali, raw, &mv) != ESP_OK) {
             // Uncalibrated fallback: linear over the 12 dB range.
@@ -141,6 +163,8 @@ static bool read_ntc(ntc_status_t *status, float *temp)
         }
         sum_mv += mv;
     }
+    s_ntc_last_raw = sum_raw / NTC_SAMPLES;
+    s_ntc_last_mv = sum_mv / NTC_SAMPLES;
     *status = ntc_temperature_c(&ntc_params, (float)sum_mv / NTC_SAMPLES, temp);
     return true;
 }
@@ -263,8 +287,12 @@ static void thermal_check(void)
             overtemp_active = true;
             shelly_fault_set(SHELLY_FAULT_SRC_OVERTEMP, true);
             relay_trip();
-            // Then tell connected ecosystems.
-            shelly_onoff_set_async(s_relay_endpoint_id, false);
+            // Then tell connected ecosystems, for every relay.
+            for (int ch = 0; ch < RELAY_CHANNELS; ch++) {
+                if (s_relay_endpoint_ids[ch] != 0) {
+                    shelly_onoff_set_async(s_relay_endpoint_ids[ch], false);
+                }
+            }
         } else if (!trip && overtemp_active && temp < governing->clear_c) {
             // The governing sensor must itself read below its clear level:
             // after a switch to the other sensor (an NTC read failing during
@@ -275,7 +303,35 @@ static void thermal_check(void)
         }
     }
 
+    thermal_readings_t r = {};
+    r.die_c = die_last_c;
+    r.die_ok = die_usable;
+#ifdef CONFIG_SHELLY_HAS_NTC
+    r.ntc_raw = s_ntc_last_raw;
+    r.ntc_mv = s_ntc_last_mv;
+    r.ntc_c = ntc_last_c;
+    r.ntc_ok = ntc_usable;
+    r.ntc_status = (int)ntc_status;
+    r.governing_ntc = governing == &ntc_hyst;
+#else
+    r.ntc_raw = -1;
+    r.ntc_mv = -1;
+    r.ntc_c = NAN;
+#endif
+    r.overtemp = overtemp_active;
+    r.no_sensor = no_sensor;
+    taskENTER_CRITICAL(&s_readings_mux);
+    s_readings = r;
+    taskEXIT_CRITICAL(&s_readings_mux);
+
     publish_temperature(temp, governing != nullptr);
+}
+
+void thermal_get_readings(thermal_readings_t *out)
+{
+    taskENTER_CRITICAL(&s_readings_mux);
+    *out = s_readings;
+    taskEXIT_CRITICAL(&s_readings_mux);
 }
 
 static void thermal_monitor_task(void *arg)
@@ -370,6 +426,13 @@ esp_err_t thermal_init(void)
 
 void thermal_set_endpoints(uint16_t relay_endpoint_id, uint16_t temperature_endpoint_id)
 {
-    s_relay_endpoint_id = relay_endpoint_id;
+    s_relay_endpoint_ids[0] = relay_endpoint_id;
     s_temperature_endpoint_id = temperature_endpoint_id;
+}
+
+void thermal_set_relay_endpoint(int ch, uint16_t relay_endpoint_id)
+{
+    if (ch >= 0 && ch < RELAY_CHANNELS) {
+        s_relay_endpoint_ids[ch] = relay_endpoint_id;
+    }
 }

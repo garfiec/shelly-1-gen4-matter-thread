@@ -20,14 +20,18 @@
 
 #include <esp_err.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <sdkconfig.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Relay control for the mains-switching relay (CONFIG_SHELLY_RELAY_GPIO).
+// Relay control for the mains-switching relays (CONFIG_SHELLY_RELAY_GPIO,
+// and CONFIG_SHELLY_RELAY2_GPIO on a 2-channel board). Channel 0 is relay 1.
+// The functions without a channel act on channel 0.
 //
-// This module owns the relay GPIO and is the single point of relay
+// This module owns the relay GPIOs and is the single point of relay
 // control in the firmware. All relay state changes from Matter
 // commands, the onboard button, the wall switch input, thermal and
 // electrical protection, or boot-time defaults go through relay_set()
@@ -77,12 +81,18 @@ extern "C" {
 // Reviewers should reject pull requests that weaken these guarantees
 // without explicit discussion of the safety implications.
 
-// A turn-on gate. Returns NULL to allow turn-on, or a short reason
+#ifdef CONFIG_SHELLY_CHANNELS
+#define RELAY_CHANNELS CONFIG_SHELLY_CHANNELS
+#else
+#define RELAY_CHANNELS 1
+#endif
+
+// A turn-on gate. Gates apply to every channel. Returns NULL to allow turn-on, or a short reason
 // string (for the log) to refuse it. Runs with the relay lock held, so
 // it must only read state; it must not block or call into Matter.
 typedef const char *(*relay_gate_fn_t)(void);
 
-// Initialize the relay subsystem. Configures the relay GPIO as an
+// Initialize the relay subsystem. Configures every relay GPIO as an
 // output, drives it LOW and releases any pad hold. Must be called once
 // during boot, before any other relay-related code runs.
 //
@@ -105,7 +115,11 @@ esp_err_t relay_register_gate(relay_gate_fn_t gate);
 // Safe to call from any task. Does not block on Matter.
 esp_err_t relay_set(bool power);
 
-// Force the relay off because of a fault. Equivalent to relay_set(false),
+// relay_set() for one channel. ESP_ERR_INVALID_ARG for a channel the
+// board doesn't have.
+esp_err_t relay_set_ch(int ch, bool power);
+
+// Force every relay off because of a fault. Equivalent to relay_set(false),
 // but documents intent at the call site. The caller sets its own fault
 // state (the state its gate reads) BEFORE calling this, so any turn-on
 // that takes the relay lock afterwards is refused. The caller then
@@ -114,6 +128,14 @@ void relay_trip(void);
 
 // The level last written to the relay pin (true = energized).
 bool relay_get(void);
+bool relay_get_ch(int ch);
+
+// Bit n set: relay n+1 was last written energized.
+uint32_t relay_get_mask(void);
+
+// Bit n set: relay n+1's pad reads high. With CONFIG_SHELLY_RELAY_READBACK
+// off, the same as relay_get_mask().
+uint32_t relay_pin_mask(void);
 
 #ifdef __cplusplus
 }

@@ -255,3 +255,21 @@ First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: built 
 ---
 
 Full release notes, including tested scenarios, are on the [GitHub releases page](../../releases).
+
+## Shelly 2PM Gen4 Outlet and Light
+
+### [1.0.0] - Unreleased
+
+First builds for the Shelly 2PM Gen4. **Experimental bring-up builds: built and unit-tested, not yet run on hardware.** See the [2PM checklist](docs/FLASHING.md#shelly-2pm-gen4-checklist) before installing.
+
+#### Added
+- Two channels: relay 1 (O1) on Matter endpoint 1 and relay 2 (O2) on endpoint 2, as two On/Off Plug-in Units (Outlet) or two On/Off Lights (Light), plus the board temperature on endpoint 3. Pins from the verified 2PM map: relays GPIO5 and GPIO3, SW1 GPIO11, SW2 GPIO10, button GPIO12, LED GPIO18, NTC GPIO4.
+- The button: a tap toggles relay 1, 2 taps toggle relay 2 (B-30). Every other gesture is as on the other devices.
+- Each wall switch input drives its own relay in its own mode (Toggle, Push button, Follow, Disabled), set separately on the Wi-Fi mode page (SW-10 to SW-12).
+- Over-temperature protection on the board NTC (trip at 90°C, clear below 75°C), with the die sensor as a fallback. A trip turns both relays off.
+- Board bring-up data on the Wi-Fi mode page: the diagnostics log, and a hardware snapshot of the last normal run (relay and input pins, button, temperatures, memory) at `/hw.json`. A read-only probe of the ADE7953 power meter, from 30 s after Matter starts, records its identity, configuration and raw readings there too, with estimates in volts, amps and watts. It never writes to the chip. Metering itself comes in a later build.
+
+#### Not in this build
+- No power metering, and no overcurrent or overvoltage protection. Rely on the circuit breaker.
+- No cover (roller shutter) mode: the outputs are two independent switches with no interlock. Don't use these builds on a 2PM wired to a motor.
+

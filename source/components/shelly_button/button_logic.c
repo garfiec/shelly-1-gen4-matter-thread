@@ -27,7 +27,10 @@ void button_logic_init(button_logic_t *b)
 
 static button_action_t taps_action(uint8_t taps)
 {
-    return taps >= BUTTON_PAIRING_TAPS ? BUTTON_ACTION_PAIRING : BUTTON_ACTION_TOGGLE;
+    if (taps >= BUTTON_PAIRING_TAPS) {
+        return BUTTON_ACTION_PAIRING;
+    }
+    return taps == 2 ? BUTTON_ACTION_DOUBLE_TAP : BUTTON_ACTION_TOGGLE;
 }
 
 static button_action_t hold_action(uint32_t held_ms)

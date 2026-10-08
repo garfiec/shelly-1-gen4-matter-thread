@@ -1,0 +1,13 @@
+menu "Shelly hardware snapshot"
+
+    config SHELLY_HW_SNAPSHOT
+        bool "Record a hardware snapshot for the Wi-Fi mode page"
+        default n
+        help
+            For bringing up a board: every 10 s of a normal boot, record the
+            relay and input pins, the button, the temperature sensors, the heap
+            and the power-meter probe's readings in memory that survives the
+            restart into Wi-Fi mode, where the page shows them (/hw.json).
+            Costs about 450 bytes of RTC memory and a 3 KB task. Reads only.
+
+endmenu

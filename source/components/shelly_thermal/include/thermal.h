@@ -54,6 +54,26 @@ esp_err_t thermal_init(void);
 // governing temperature. Call after the endpoints are created.
 void thermal_set_endpoints(uint16_t relay_endpoint_id, uint16_t temperature_endpoint_id);
 
+// A 2-channel board's other relay endpoints (ch 1 = relay 2). A trip opens
+// every relay and reports Off on each endpoint set here.
+void thermal_set_relay_endpoint(int ch, uint16_t relay_endpoint_id);
+
+// The latest readings, for diagnostics. Filled by every check (2 s).
+typedef struct {
+    float die_c;            // NAN until read
+    bool die_ok;            // Usable (installed, reading)
+    int ntc_raw;            // Average ADC count, -1 if none
+    int ntc_mv;             // Average millivolts, -1 if none
+    float ntc_c;            // Last good NTC temperature, NAN if none
+    bool ntc_ok;            // Usable
+    int ntc_status;         // ntc_status_t of the last read
+    bool governing_ntc;     // The NTC governs (else the die)
+    bool overtemp;          // Tripped
+    bool no_sensor;         // No usable sensor: turn-on refused
+} thermal_readings_t;
+
+void thermal_get_readings(thermal_readings_t *out);
+
 #ifdef __cplusplus
 }
 #endif

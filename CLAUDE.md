@@ -18,7 +18,7 @@ The button, the wall switch (SW) and the status LED are the device's only local 
 - The LED and commissioning-window handling in `source/components/shelly_app_common/app_common.cpp` (`shelly_led_refresh`)
 - `source/components/shelly_switch_input/` and `source/components/shelly_maintenance/`
 - `source/components/shelly_app_common/shelly_settings.cpp` (the switch mode and the change waiting for 3 presses)
-- Each variant's `main/app_main.cpp` UI wiring (`shelly_ui_config_t`: toggle, local toggle, switch role, switch handler), and the wall-switch callbacks that hand every change to `shelly_ui_switch_changed()` (the Opener's `contact_sensor.cpp`, the Light Switch's `switch_binding.cpp`)
+- Each variant's `main/app_main.cpp` UI wiring (`shelly_ui_config_t`: toggle, local toggle, switch role, switch handler, and on the 2PM the channel count and relay 2's functions), and the wall-switch callbacks that hand every change to `shelly_ui_switch_changed()` (the Opener's `contact_sensor.cpp`, the Light Switch's `switch_binding.cpp`)
 
 **When you design or change a UI behavior, walk the whole matrix so no mode is left out:**
 - **Inputs:** tap, 2 taps, 3 or more taps, hold released at 1-5 s, 5-10 s, 10-20 s, and 20 s or more; wall switch change to on and to off, in each switch mode (Toggle, Push button, Follow, Disabled); power-on.
@@ -29,7 +29,7 @@ The button, the wall switch (SW) and the status LED are the device's only local 
   - Matter update downloading or installing (LED-16);
   - built without Wi-Fi mode;
   - Wi-Fi maintenance mode (including an upload in progress, and a change on the page waiting for 3 presses).
-- **Variants:** Light, Outlet, Mini and 1PM (SW toggles), Opener (SW is a contact sensor, a toggle is a pulse), Light Switch (SW drives bindings).
+- **Variants:** Light, Outlet, Mini and 1PM (SW toggles), 2PM (two relays: a tap is relay 1, 2 taps relay 2, SW1 and SW2 each drive their own relay in their own mode), Opener (SW is a contact sensor, a toggle is a pulse), Light Switch (SW drives bindings).
 - **Feedback:** every action must show something (a relay change, LED-14 refused or LED-15 accepted). The one documented exception: a Follow-mode switch change when the relay is already in that state (the relay already shows it). Nothing may happen while the button is held. Actions fire on release.
 
 Other docs (`COMMISSIONING.md`, `FLASHING.md`, `UPDATING.md`, `PROTECTION.md`, `README.md`) link to `BUTTON-AND-LED.md` rather than restating it. If one of them mentions a gesture or LED pattern, keep it consistent or replace it with a link.

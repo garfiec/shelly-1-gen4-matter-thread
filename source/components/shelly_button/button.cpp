@@ -115,6 +115,8 @@ static const char *action_name(button_action_t action)
         return "wifi mode";
     case BUTTON_ACTION_FACTORY_RESET:
         return "factory reset";
+    case BUTTON_ACTION_DOUBLE_TAP:
+        return "2 taps";
     default:
         return "none";
     }

@@ -32,6 +32,7 @@ Once the firmware is up and running, updates are applied through Home Assistant 
 - [Safety warning](#safety-warning)
 - [Hardware revision](#hardware-revision)
 - [Shelly 1PM Gen4 checklist](#shelly-1pm-gen4-checklist)
+- [Shelly 2PM Gen4 checklist](#shelly-2pm-gen4-checklist)
 - [Flash with the Shelly web UI](#flash-with-the-shelly-web-ui)
 - [Flash with USB-UART](#flash-with-usb-uart)
 - [What you will need](#what-you-will-need)
@@ -47,7 +48,7 @@ Once the firmware is up and running, updates are applied through Home Assistant 
 
 Tested on several Shelly 1 Gen4s and Shelly 1 Mini Gen4s, all hardware revision **v0.1.2** (printed on the PCB). Other revisions should work but have not been verified. If you have a different revision, please [open an issue](../../../issues/new) with your findings.
 
-The Shelly 1PM Gen4 firmware is **experimental and not yet verified on hardware**. Work through the [checklist](#shelly-1pm-gen4-checklist) below before flashing one.
+The Shelly 1PM Gen4 firmware is **experimental and not yet verified on hardware**. Work through the [checklist](#shelly-1pm-gen4-checklist) below before flashing one. The same goes for the Shelly 2PM Gen4 bring-up builds: see the [2PM checklist](#shelly-2pm-gen4-checklist).
 
 ---
 
@@ -62,6 +63,21 @@ The 1PM firmware switches a metered 15 A load and has not run on hardware yet. I
 5. **Install on mains, then commission.** The meter only appears once the device has seen AC mains. Bench power from the UART adapter is 3.3V DC, so a 1PM commissioned on the bench shows no power metering; after it is installed and restarted on mains the metering appears, and Home Assistant may need to re-interview the device. Commissioning after installation avoids that. On bench power the status LED may also flash very fast (100ms on, 100ms off) instead of the 200ms commissioning blink: that is the meter-lost alert, because the power meter has no mains to measure, and it clears on mains.
 6. **Model and load.** The defaults are for the UL model (15 A / 120 V). An EU unit (S4SW-001P16EU), a DC supply, or an inductive load without an RC snubber each change what the protection can do: see [Supply and loads](PROTECTION.md#supply-and-loads).
 7. **First boot on mains.** If you can watch the serial log, look for `Relay initialized on GPIO4`, `metering: AC present`, `protection: Mains nominal 120 V` and no `Fault raised` lines. See [Protection and Metering](PROTECTION.md) for what each fault means.
+
+---
+
+## Shelly 2PM Gen4 checklist
+
+The first 2PM builds (Outlet and Light) switch two channels and have **no power metering and no overcurrent or overvoltage protection**: only over-temperature. Rely on the circuit breaker. They exist to bring the board up: they record what the hardware reads and show it on the Wi-Fi mode page, for the metering build that follows. Nothing about them has run on a 2PM yet.
+
+1. **Hardware code.** Stock's `http://<device-ip>/rpc/Shelly.GetDeviceInfo` must report `"app":"S2PMG4"`. The package is built for that code; the web UI refuses it on anything else.
+2. **Slot.** The same call must report `"slot":1`. Install any stock update first if it reports 0 (see [Flash with the Shelly web UI](#flash-with-the-shelly-web-ui)). A web UI install from stock 2.0.1 has worked on a 1PM Gen4.
+3. **Partition layout (an assumption).** The package writes the stock Gen4 layout taken from the 1 Gen4, 1PM and Mini. It has not been read from a 2PM's flash; the 2PM uses the same module and its stock firmware reports the same 896 KB file system. A UART backup first is the only way to keep the option to go back to stock.
+4. **No rollback on the first install.** A web UI install from stock can't fall back if the new firmware fails to start. The hardware snapshot and the power-meter probe start only after Matter is up (the probe 30 s later, read only, with timeouts), and after any crash restart neither runs, so they can't cause a crash loop. The two-relay and two-input code itself runs from the start, as on every variant.
+5. **Two separate loads, never a motor.** These are switch builds: each output is its own on/off switch, and nothing stops both being on at once. Don't install them on a 2PM wired to a roller shutter, blind or other motor with an up and a down wire (stock's "cover" profile): both directions on together can damage the motor. A cover build comes later.
+6. **Prove the way back before pairing.** After the install and a power cycle, hold the button 5 s: the LED must show the Wi-Fi mode double blink (LED-08) and the `Shelly-S2PMG4-…` network must appear. Only then pair. Wi-Fi mode is how you install the next build.
+7. **Check both channels.** On the Wi-Fi mode page, toggle relay 1 and relay 2, flip SW1 and SW2, and open the Hardware data card: each relay's pin should follow it, each switch should move its own pin, and the board temperature should be close to stock's (about 40 °C at idle).
+8. **Collect the meter data.** Leave it in normal operation for at least 2 minutes with a known load on each channel, then enter Wi-Fi mode: the Hardware data card shows the power meter's readings, and `/hw.json` and the Diagnostics log have the raw values.
 
 ---
 

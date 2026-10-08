@@ -46,6 +46,7 @@ HARDWARE = {
     "shelly-1-gen4": {"app_code": "S1G4", "compatible": "S1G4*"},
     "shelly-1pm-gen4" : {"app_code": "S1PMG4", "compatible": "S1PMG4*"},
     "shelly-1-mini-gen4" : {"app_code": "Mini1G4", "compatible": "Mini1G4*"},
+    "shelly-2pm-gen4" : {"app_code": "S2PMG4", "compatible": "S2PMG4*"},
 }
 PLATFORM     = "esp32c6"
 # Kept above any stock version; the device never refuses it as a downgrade. The

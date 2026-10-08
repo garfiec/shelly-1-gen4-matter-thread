@@ -108,7 +108,7 @@ The mode is a restart rather than a switch because Espressif does not support a 
 
 Use the same `.ota` file as for [Matter OTA](#2-get-the-ota-image): `automatous-io-{hardware}-{variant}-vX.Y.Z.ota`. The page refuses:
 - a `.bin`: use the `.ota`;
-- firmware for a different Shelly model: the image carries its hardware code (`S1G4`, `Mini1G4` or `S1PMG4`), and it must match;
+- firmware for a different Shelly model: the image carries its hardware code (`S1G4`, `Mini1G4`, `S1PMG4` or `S2PMG4`), and it must match;
 - firmware built before this feature: it has no hardware code, so install it over UART. Matter OTA only offers a version higher than the one running, and every build without a hardware code is older than one with it.
 
 ### 2. Enter the mode
@@ -139,7 +139,7 @@ The device returns to normal operation, with Matter and Thread back on, in any o
 A 5 s hold during an upload abandons it: nothing is installed. The relay's state in the mode becomes its previous state, and it then follows its power-on setting from there: with the default Off it turns off, with Previous it keeps that state (see [Button, Switch and LED](BUTTON-AND-LED.md), P-03). [Automatic rollback](#5-install-the-update) applies as for a Matter OTA: leave the device powered for a minute after an update.
 
 While the mode lasts:
-- a tap and the page's Toggle still switch the relay, and so does the wall switch on the Light, Outlet, Mini and 1PM, as its [switch mode](BUTTON-AND-LED.md#wall-switch-modes) says (the Opener's contact and the Light Switch's bindings need Matter and are ignored), but controllers only see the relay's state once the device is back in normal mode;
+- a tap and the page's Toggle still switch the relay, and so does the wall switch on the Light, Outlet, Mini, 1PM and 2PM (each relay on the 2PM, with 2 taps for relay 2), as its [switch mode](BUTTON-AND-LED.md#wall-switch-modes) says (the Opener's contact and the Light Switch's bindings need Matter and are ignored), but controllers only see the relay's state once the device is back in normal mode;
 - Home Assistant shows the device as unavailable;
 - every protection still trips.
 
@@ -151,7 +151,7 @@ The network is open, so anyone nearby can read the code while the mode is on. Ch
 
 ### Wall switch mode
 
-On the Light, Outlet, Mini and 1PM, the page also sets what the wall switch wired to SW does: **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position) or **Disabled**. Choose one, press **Save**, then press the device's button 3 times within 2 minutes, as for the setup code. The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
+On the Light, Outlet, Mini, 1PM and 2PM, the page also sets what the wall switch wired to SW does (on the 2PM, SW1 and SW2 each have their own setting, for relay 1 and relay 2): **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position) or **Disabled**. Choose one, press **Save**, then press the device's button 3 times within 2 minutes, as for the setup code. The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
 
 ---
 

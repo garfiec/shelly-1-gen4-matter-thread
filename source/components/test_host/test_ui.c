@@ -65,7 +65,7 @@ typedef struct {
 
 static const gesture_row_t GESTURES[] = {
     {"G-01", "1 press, released before 1 s", "Tap", 1, {{TAP, 0}}},
-    {"G-02", "2 presses less than 300 ms apart", "Tap", 2, {{TAP, FAST}, {TAP, 0}}},
+    {"G-02", "2 presses less than 300 ms apart", "2 taps", 2, {{TAP, FAST}, {TAP, 0}}},
     {"G-03", "3 presses less than 300 ms apart", "3+ taps", 3, {{TAP, FAST}, {TAP, FAST}, {TAP, 0}}},
     {"G-04", "5 presses less than 300 ms apart", "3+ taps", 5, {{TAP, FAST}, {TAP, FAST}, {TAP, FAST}, {TAP, FAST}, {TAP, 0}}},
     {"G-05", "2 presses 500 ms apart", "Tap, Tap", 2, {{TAP, 500}, {TAP, 0}}},
@@ -78,6 +78,7 @@ static const gesture_row_t GESTURES[] = {
     {"G-12", "Hold 15 s", "Hold 10-20 s", 1, {{15000, 0}}},
     {"G-13", "Hold 20 s or longer", "Nothing", 1, {{20000, 0}}},
     {"G-14", "2 presses, then a 6 s hold less than 300 ms later", "Hold 5-10 s", 3, {{TAP, FAST}, {TAP, FAST}, {6000, 0}}},
+    {"G-15", "2 presses less than 300 ms apart, a third 500 ms later", "2 taps, Tap", 3, {{TAP, FAST}, {TAP, 500}, {TAP, 0}}},
 };
 
 static const char *gesture_name(button_action_t a)
@@ -85,6 +86,8 @@ static const char *gesture_name(button_action_t a)
     switch (a) {
     case BUTTON_ACTION_TOGGLE:
         return "Tap";
+    case BUTTON_ACTION_DOUBLE_TAP:
+        return "2 taps";
     case BUTTON_ACTION_PAIRING:
         return "3+ taps";
     case BUTTON_ACTION_WIFI_MODE:
@@ -233,18 +236,22 @@ static const struct {
     ui_input_t input;
 } INPUTS[] = {
     {"Tap", UI_INPUT_TAP},
+    {"2 taps", UI_INPUT_TAP2},
     {"3+ taps", UI_INPUT_PAIRING},
     {"Hold 5-10 s", UI_INPUT_WIFI_MODE},
     {"Hold 10-20 s", UI_INPUT_FACTORY_RESET},
 };
 
+// ch: the input on a 2PM (0 = SW1). Each input drives its own relay.
 static const struct {
     const char *name;
     ui_switch_role_t role;
+    uint8_t ch;
 } ROLES[] = {
-    {"Light, Outlet, Mini, 1PM", UI_SWITCH_TOGGLE},
-    {"Opener", UI_SWITCH_CONTACT},
-    {"Light Switch", UI_SWITCH_BINDING},
+    {"Light, Outlet, Mini, 1PM, 2PM SW1", UI_SWITCH_TOGGLE, 0},
+    {"2PM SW2", UI_SWITCH_TOGGLE, 1},
+    {"Opener", UI_SWITCH_CONTACT, 0},
+    {"Light Switch", UI_SWITCH_BINDING, 0},
 };
 
 static const char *outcome_name(ui_outcome_t o)
@@ -321,6 +328,13 @@ static const decision_row_t DECISIONS[] = {
     {"B-26", "Wi-Fi mode, change waiting", "3+ taps", "Save the change"},
     {"B-27", "Wi-Fi mode, change waiting", "Hold 5-10 s", "Exit Wi-Fi mode"},
     {"B-28", "Wi-Fi mode, change waiting", "Hold 10-20 s", "Factory reset after a restart"},
+    {"B-29", "Booting", "2 taps", "Refused"},
+    {"B-30", "Normal", "2 taps", "Toggle"},
+    {"B-31", "First 60 s after an update", "2 taps", "Toggle"},
+    {"B-32", "Matter update downloading", "2 taps", "Toggle"},
+    {"B-33", "Normal, built without Wi-Fi mode", "2 taps", "Toggle"},
+    {"B-34", "Wi-Fi maintenance mode", "2 taps", "Toggle, without Matter"},
+    {"B-35", "Wi-Fi mode, change waiting", "2 taps", "Toggle, without Matter"},
 };
 
 typedef struct {
@@ -331,15 +345,18 @@ typedef struct {
 } switch_row_t;
 
 static const switch_row_t SWITCHES[] = {
-    {"SW-01", "Light, Outlet, Mini, 1PM", "Booting", "Ignored"},
-    {"SW-02", "Light, Outlet, Mini, 1PM", "Normal", "Toggle"},
-    {"SW-03", "Light, Outlet, Mini, 1PM", "Wi-Fi maintenance mode", "Toggle, without Matter"},
+    {"SW-01", "Light, Outlet, Mini, 1PM, 2PM SW1", "Booting", "Ignored"},
+    {"SW-02", "Light, Outlet, Mini, 1PM, 2PM SW1", "Normal", "Toggle"},
+    {"SW-03", "Light, Outlet, Mini, 1PM, 2PM SW1", "Wi-Fi maintenance mode", "Toggle, without Matter"},
     {"SW-04", "Opener", "Booting", "Ignored"},
     {"SW-05", "Opener", "Normal", "Its own use"},
     {"SW-06", "Opener", "Wi-Fi maintenance mode", "Ignored"},
     {"SW-07", "Light Switch", "Booting", "Ignored"},
     {"SW-08", "Light Switch", "Normal", "Its own use"},
     {"SW-09", "Light Switch", "Wi-Fi maintenance mode", "Ignored"},
+    {"SW-10", "2PM SW2", "Booting", "Ignored"},
+    {"SW-11", "2PM SW2", "Normal", "Toggle"},
+    {"SW-12", "2PM SW2", "Wi-Fi maintenance mode", "Toggle, without Matter"},
 };
 
 // Wall switch modes (doc: "Wall switch modes", SM-xx): the toggle role only.
@@ -430,6 +447,17 @@ static void test_decisions(void)
         const char *got = outcome_name(ui_decide(input, st));
         CHECK_ROW(row->id, strcmp(got, row->outcome) == 0, "%s / %s: got \"%s\", want \"%s\"", row->state,
                   row->input, got, row->outcome);
+        // The same decision on a 2PM, where 2 taps act on relay 2 and
+        // everything else on relay 1; one relay everywhere else.
+        ui_state_t two = *st;
+        two.channels = 2;
+        got = outcome_name(ui_decide(input, &two));
+        CHECK_ROW(row->id, strcmp(got, row->outcome) == 0, "%s / %s on a 2PM: got \"%s\"", row->state, row->input, got);
+        uint8_t want_ch = input == UI_INPUT_TAP2 ? 1 : 0;
+        CHECK_ROW(row->id, ui_decide_channel(input, &two) == want_ch, "%s / %s on a 2PM: relay %u", row->state,
+                  row->input, ui_decide_channel(input, &two) + 1u);
+        CHECK_ROW(row->id, ui_decide_channel(input, st) == 0, "%s / %s on one relay: relay %u", row->state,
+                  row->input, ui_decide_channel(input, st) + 1u);
     }
 
     for (size_t r = 0; r < sizeof(SWITCHES) / sizeof(SWITCHES[0]); r++) {
@@ -440,11 +468,17 @@ static void test_decisions(void)
         if (base != NULL) {
             st = *base;
         }
+        uint8_t ch = 0;
         for (size_t i = 0; i < sizeof(ROLES) / sizeof(ROLES[0]); i++) {
             if (strcmp(ROLES[i].name, row->variant) == 0) {
                 st.switch_role = ROLES[i].role;
+                ch = ROLES[i].ch;
                 known = true;
             }
+        }
+        if (ch > 0) {
+            st.channels = 2;
+            st.switch_channel = ch;
         }
         CHECK_ROW(row->id, base != NULL && known, "unknown variant \"%s\" or state \"%s\"", row->variant, row->state);
         if (base == NULL || !known) {
@@ -453,7 +487,13 @@ static void test_decisions(void)
         const char *got = outcome_name(ui_decide(UI_INPUT_SWITCH, &st));
         CHECK_ROW(row->id, strcmp(got, row->outcome) == 0, "%s / %s: got \"%s\", want \"%s\"", row->variant,
                   row->state, got, row->outcome);
+        CHECK_ROW(row->id, ui_decide_channel(UI_INPUT_SWITCH, &st) == ch, "%s: acts on relay %u", row->variant,
+                  ui_decide_channel(UI_INPUT_SWITCH, &st) + 1u);
     }
+    // A switch channel the board doesn't have falls back to relay 1.
+    ui_state_t one = {.started = true, .switch_channel = 1};
+    CHECK_ROW("SW", ui_decide_channel(UI_INPUT_SWITCH, &one) == 0, "%s", "SW2 on a one-relay board");
+    CHECK_ROW("B", ui_decide_channel(UI_INPUT_TAP2, NULL) == 0, "%s", "NULL state channel");
     CHECK_ROW("B", ui_decide(UI_INPUT_TAP, NULL) == UI_IGNORE, "%s", "NULL state");
 
     // Wall switch modes: every mode has rows covering both changes exactly once.
@@ -486,30 +526,31 @@ static void test_decisions(void)
         if (mode == NULL || mask == 0) {
             continue;
         }
-        for (int active = 0; active <= 1; active++) {
-            if (!(mask & (1 << active))) {
+        for (int active = 0; active <= 3; active++) {
+            // 0-1: SW1 (any board) off/on; 2-3: a 2PM's SW2 off/on.
+            uint8_t ch = (uint8_t)(active >> 1);
+            if (!(mask & (1 << (active & 1)))) {
                 continue;
             }
-            ui_state_t st = *normal;
-            st.switch_role = UI_SWITCH_TOGGLE;
-            st.switch_mode = *mode;
-            st.switch_active = active;
-            const char *got = outcome_name(ui_decide(UI_INPUT_SWITCH, &st));
-            CHECK_ROW(row->id, strcmp(got, row->normal) == 0, "%s / %s / Normal: got \"%s\", want \"%s\"", row->mode,
-                      row->change, got, row->normal);
-            st = *wifi;
-            st.switch_role = UI_SWITCH_TOGGLE;
-            st.switch_mode = *mode;
-            st.switch_active = active;
-            got = outcome_name(ui_decide(UI_INPUT_SWITCH, &st));
-            CHECK_ROW(row->id, strcmp(got, row->wifi) == 0, "%s / %s / Wi-Fi mode: got \"%s\", want \"%s\"", row->mode,
-                      row->change, got, row->wifi);
-            // Booting ignores the switch in every mode (SW-01).
-            st = *booting;
-            st.switch_role = UI_SWITCH_TOGGLE;
-            st.switch_mode = *mode;
-            st.switch_active = active;
-            CHECK_ROW(row->id, ui_decide(UI_INPUT_SWITCH, &st) == UI_IGNORE, "%s: acted while booting", row->mode);
+            bool on = (active & 1) != 0;
+            const ui_state_t *bases[] = {normal, wifi, booting};
+            const char *wants[] = {row->normal, row->wifi, "Ignored"};
+            const char *names[] = {"Normal", "Wi-Fi mode", "Booting"};
+            ui_state_t st;
+            for (int b = 0; b < 3; b++) {
+                // Booting ignores the switch in every mode (SW-01).
+                st = *bases[b];
+                st.channels = ch ? 2 : 0;
+                st.switch_channel = ch;
+                st.switch_role = UI_SWITCH_TOGGLE;
+                st.switch_mode = *mode;
+                st.switch_active = on;
+                const char *got = outcome_name(ui_decide(UI_INPUT_SWITCH, &st));
+                CHECK_ROW(row->id, strcmp(got, wants[b]) == 0, "%s / %s / %s / SW%u: got \"%s\", want \"%s\"",
+                          row->mode, row->change, names[b], ch + 1u, got, wants[b]);
+                CHECK_ROW(row->id, ui_decide_channel(UI_INPUT_SWITCH, &st) == ch, "%s: SW%u acts on relay %u",
+                          row->mode, ch + 1u, ui_decide_channel(UI_INPUT_SWITCH, &st) + 1u);
+            }
         }
     }
     // The page's names round-trip, and nothing else parses.

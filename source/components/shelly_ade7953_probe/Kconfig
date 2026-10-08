@@ -1,0 +1,34 @@
+menu "Shelly ADE7953 probe"
+
+    config SHELLY_ADE7953_PROBE
+        bool "Read the ADE7953 power meter (read only, for bring-up)"
+        default n
+        depends on SHELLY_HW_SNAPSHOT
+        help
+            After Matter starts, read the ADE7953's registers over I2C into the
+            hardware snapshot, once in full and then the measurements every
+            minute. Never writes the chip. For collecting data before a board
+            has metering.
+
+    config SHELLY_ADE7953_SDA_GPIO
+        int "SDA GPIO"
+        depends on SHELLY_ADE7953_PROBE
+        default 6
+
+    config SHELLY_ADE7953_SCL_GPIO
+        int "SCL GPIO"
+        depends on SHELLY_ADE7953_PROBE
+        default 7
+
+    config SHELLY_ADE7953_I2C_HZ
+        int "I2C clock (Hz)"
+        depends on SHELLY_ADE7953_PROBE
+        default 200000
+
+    config SHELLY_ADE7953_PROBE_DELAY_S
+        int "Seconds after Matter starts before the first read"
+        depends on SHELLY_ADE7953_PROBE
+        range 10 600
+        default 30
+
+endmenu

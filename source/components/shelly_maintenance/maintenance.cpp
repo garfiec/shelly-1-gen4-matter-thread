@@ -25,6 +25,7 @@
 #include "maintenance_dns.h"
 #include "maintenance_image.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include <esp_app_desc.h>
@@ -46,12 +47,19 @@
 
 #include <relay.h>
 #include <shelly_hw_desc.h>
+#include <shelly_hw_snapshot.h>
 #include <shelly_diag_log.h>
 #include <shelly_settings.h>
 #include <shelly_setup_code.h>
 #include <status_led.h>
 
 static const char *TAG = "maintenance";
+
+#if CONFIG_SHELLY_HW_SNAPSHOT
+#define HW_DATA_BUILT true
+#else
+#define HW_DATA_BUILT false
+#endif
 
 #define AP_IP_0             192
 #define AP_IP_1             168
@@ -71,6 +79,7 @@ extern const char page_html_start[] asm("_binary_page_html_start");
 extern const char page_html_end[] asm("_binary_page_html_end");
 
 static shelly_ui_toggle_fn_t s_local_toggle = nullptr;
+static bool (*s_local_toggle_ch)(int ch) = nullptr;
 // Milliseconds since boot, 32-bit: the web server and event tasks write it
 // and the main loop reads it, and a 64-bit value could tear on this core.
 static volatile uint32_t s_last_activity_ms = 0;
@@ -299,27 +308,25 @@ static esp_err_t status_get(httpd_req_t *req)
         }
     }
     bool has_modes = shelly_ui_switch_role() == UI_SWITCH_TOGGLE;
+    unsigned pending_ch = strcmp(pending_kind, "\"switch\"") == 0 ? change.channel + 1u : 0u;
 
-    char body[640];
-    snprintf(body, sizeof(body),
-             "{\"hw\":\"%s\",\"variant\":\"%s\",\"version\":\"%s\",\"mac\":\"%s\",\"relay\":%s,"
-             "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,"
-             "\"switch_modes\":%s,\"switch_mode\":\"%s\","
-             "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u,\"diag\":%s}",
-             shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text, source,
-             created ? "true" : "false", has_modes ? "true" : "false", ui_switch_mode_name(shelly_switch_mode_get()),
-             pending_kind, pending, (unsigned)secs_left, shelly_diag_log_available() ? "true" : "false");
-    return send_json(req, "200 OK", body);
-}
-
-static esp_err_t toggle_post(httpd_req_t *req)
-{
-    touch();
-    bool ok = s_local_toggle != nullptr && s_local_toggle();
-    if (!ok) {
-        status_led_flash_refused();
+    char body[768];
+    int n = snprintf(body, sizeof(body),
+                     "{\"hw\":\"%s\",\"variant\":\"%s\",\"version\":\"%s\",\"mac\":\"%s\",\"relay\":%s,"
+                     "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,"
+                     "\"switch_modes\":%s,\"switch_mode\":\"%s\","
+                     "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u,\"diag\":%s,"
+                     "\"channels\":%d,\"relay2\":%s,\"switch_mode2\":\"%s\",\"pending_ch\":%u,\"hw_data\":%s}",
+                     shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text,
+                     source, created ? "true" : "false", has_modes ? "true" : "false",
+                     ui_switch_mode_name(shelly_switch_mode_get()), pending_kind, pending, (unsigned)secs_left,
+                     shelly_diag_log_available() ? "true" : "false", RELAY_CHANNELS,
+                     relay_get_ch(1) ? "true" : "false", ui_switch_mode_name(shelly_switch_mode_get_ch(1)),
+                     pending_ch, HW_DATA_BUILT ? "true" : "false");
+    if (n < 0 || n >= (int)sizeof(body)) {
+        return send_result(req, "500 Internal Server Error", false, "Status too long");
     }
-    return send_result(req, "200 OK", ok, ok ? "" : "The relay refused to switch (over-temperature or protection)");
+    return send_json(req, "200 OK", body);
 }
 
 static esp_err_t exit_post(httpd_req_t *req)
@@ -374,6 +381,34 @@ static bool read_small_body(httpd_req_t *req, char *text, size_t size, esp_err_t
     return true;
 }
 
+// POST /toggle: toggle relay 1, or with the body "2" relay 2.
+static esp_err_t toggle_post(httpd_req_t *req)
+{
+    touch();
+    int ch = 0;
+    if (req->content_len > 0) {
+        char text[4];
+        esp_err_t reply = ESP_OK;
+        if (!read_small_body(req, text, sizeof(text), &reply)) {
+            return reply;
+        }
+        ch = atoi(text) - 1;
+        if (ch < 0 || ch >= RELAY_CHANNELS) {
+            return send_result(req, "400 Bad Request", false, "This device has no such relay");
+        }
+    }
+    bool ok;
+    if (s_local_toggle_ch != nullptr) {
+        ok = s_local_toggle_ch(ch);
+    } else {
+        ok = ch == 0 && s_local_toggle != nullptr && s_local_toggle();
+    }
+    if (!ok) {
+        status_led_flash_refused();
+    }
+    return send_result(req, "200 OK", ok, ok ? "" : "The relay refused to switch (over-temperature or protection)");
+}
+
 // POST /code/set: the owner's 11-digit code, as typed. It waits for 3
 // presses of the button (docs/BUTTON-AND-LED.md, B-26) before it is saved.
 static esp_err_t code_set_post(httpd_req_t *req)
@@ -407,8 +442,9 @@ static esp_err_t code_new_post(httpd_req_t *req)
     return send_result(req, "200 OK", true, "");
 }
 
-// POST /switch/mode: toggle, push, follow or disabled. It waits for 3
-// presses of the button, like a setup code (B-26).
+// POST /switch/mode: toggle, push, follow or disabled, for SW1; "2:follow"
+// and so on for SW2. It waits for 3 presses of the button, like a setup
+// code (B-26).
 static esp_err_t switch_mode_post(httpd_req_t *req)
 {
     touch();
@@ -417,8 +453,14 @@ static esp_err_t switch_mode_post(httpd_req_t *req)
     if (!read_small_body(req, text, sizeof(text), &reply)) {
         return reply;
     }
+    int ch = 0;
+    const char *name = text;
+    if (text[0] >= '1' && text[0] <= '9' && text[1] == ':') {
+        ch = text[0] - '1';
+        name = text + 2;
+    }
     ui_switch_mode_t mode;
-    if (!ui_switch_mode_parse(text, &mode) || !shelly_switch_mode_stage(mode)) {
+    if (!ui_switch_mode_parse(name, &mode) || !shelly_switch_mode_stage_ch(ch, mode)) {
         return send_result(req, "400 Bad Request", false, "This device has no wall switch modes, or that mode is unknown");
     }
     return send_result(req, "200 OK", true, "");
@@ -450,6 +492,26 @@ static esp_err_t diag_clear_post(httpd_req_t *req)
     touch();
     shelly_diag_log_clear();
     return send_result(req, "200 OK", true, "");
+}
+#endif
+
+#if CONFIG_SHELLY_HW_SNAPSHOT
+// GET /hw.json: the hardware snapshot of the last normal boot, and what the
+// pins read now.
+static esp_err_t hw_get(httpd_req_t *req)
+{
+    touch();
+    // Slack: the live values (free heap, uptime) can grow a digit between
+    // measuring and writing.
+    size_t need = shelly_hw_snapshot_json(nullptr, 0) + 128;
+    char *buf = (char *)malloc(need);
+    if (buf == nullptr) {
+        return send_result(req, "500 Internal Server Error", false, "Out of memory");
+    }
+    shelly_hw_snapshot_json(buf, need);
+    esp_err_t err = send_json(req, "200 OK", buf);
+    free(buf);
+    return err;
 }
 #endif
 
@@ -613,7 +675,7 @@ static esp_err_t start_http(void)
     cfg.stack_size = HTTP_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 12;
+    cfg.max_uri_handlers = 16;
     cfg.recv_wait_timeout = 10;
     cfg.send_wait_timeout = 10;
 
@@ -636,6 +698,9 @@ static esp_err_t start_http(void)
         {.uri = "/diag.txt", .method = HTTP_GET, .handler = diag_get, .user_ctx = nullptr},
         {.uri = "/diag/clear", .method = HTTP_POST, .handler = diag_clear_post, .user_ctx = nullptr},
 #endif
+#if CONFIG_SHELLY_HW_SNAPSHOT
+        {.uri = "/hw.json", .method = HTTP_GET, .handler = hw_get, .user_ctx = nullptr},
+#endif
     };
     for (const httpd_uri_t &uri : uris) {
         err = httpd_register_uri_handler(server, &uri);
@@ -650,15 +715,30 @@ static esp_err_t start_http(void)
 // Run
 // ---------------------------------------------------------------------------
 
+[[noreturn]] static void run(uint32_t relays_on);
+
 void shelly_maintenance_run(bool relay_was_on, shelly_ui_toggle_fn_t local_toggle)
 {
-    ESP_LOGW(TAG, "Wi-Fi maintenance mode: Matter and Thread are off for this boot");
     s_local_toggle = local_toggle;
+    run(relay_was_on ? 1u : 0u);
+}
+
+void shelly_maintenance_run_ch(uint32_t relays_on, bool (*local_toggle_ch)(int ch))
+{
+    s_local_toggle_ch = local_toggle_ch;
+    run(relays_on);
+}
+
+static void run(uint32_t relays_on)
+{
+    ESP_LOGW(TAG, "Wi-Fi maintenance mode: Matter and Thread are off for this boot");
     status_led_set_state(LED_STATE_MAINTENANCE);
     touch();
 
-    if (relay_was_on && relay_set(true) != ESP_OK) {
-        ESP_LOGW(TAG, "Relay not restored: turn-on refused");
+    for (int ch = 0; ch < RELAY_CHANNELS; ch++) {
+        if ((relays_on & (1u << ch)) != 0 && relay_set_ch(ch, true) != ESP_OK) {
+            ESP_LOGW(TAG, "Relay %d not restored: turn-on refused", ch + 1);
+        }
     }
 
     esp_err_t err = start_wifi();

@@ -40,6 +40,8 @@ void shelly_settings_init(void);
 // The wall-switch mode (toggle role only). Toggle if none is saved or the
 // saved value is unknown.
 ui_switch_mode_t shelly_switch_mode_get(void);
+// The same for one input (0 = SW1). Each input of a 2-channel board has its own.
+ui_switch_mode_t shelly_switch_mode_get_ch(int ch);
 
 // ---- The change waiting for 3 presses ----
 
@@ -55,6 +57,7 @@ typedef struct {
     shelly_change_kind_t kind;
     setup_code_t code;              // SHELLY_CHANGE_SETUP_CODE
     ui_switch_mode_t switch_mode;   // SHELLY_CHANGE_SWITCH_MODE
+    uint8_t channel;                // SHELLY_CHANGE_SWITCH_MODE: which input (0 = SW1)
 } shelly_change_t;
 
 // Stage a change. It replaces any change already waiting.
@@ -63,6 +66,7 @@ void shelly_change_stage(const shelly_change_t *change);
 // Stage a switch-mode change. False if this variant's wall switch has no
 // modes (the Opener, the Light Switch) or the mode is not valid.
 bool shelly_switch_mode_stage(ui_switch_mode_t mode);
+bool shelly_switch_mode_stage_ch(int ch, ui_switch_mode_t mode);
 
 void shelly_change_cancel(void);
 

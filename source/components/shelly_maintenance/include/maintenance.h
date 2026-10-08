@@ -39,3 +39,8 @@
 // relay state saved before the restart; it is restored through the relay
 // gate. local_toggle backs the page's Toggle button.
 [[noreturn]] void shelly_maintenance_run(bool relay_was_on, shelly_ui_toggle_fn_t local_toggle);
+
+// The same for a 2-channel board: relays_on is the mask from
+// shelly_maintenance_boot_pending_mask(), and local_toggle_ch(ch) backs the
+// page's Toggle buttons (0 = relay 1).
+[[noreturn]] void shelly_maintenance_run_ch(uint32_t relays_on, bool (*local_toggle_ch)(int ch));

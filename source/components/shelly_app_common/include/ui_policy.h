@@ -28,17 +28,19 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef enum {
-    UI_INPUT_TAP,           // 1 or 2 taps
+    UI_INPUT_TAP,           // 1 tap
     UI_INPUT_PAIRING,       // 3 or more taps
     UI_INPUT_WIFI_MODE,     // Hold released at 5-10 s
     UI_INPUT_FACTORY_RESET, // Hold released at 10-20 s
     UI_INPUT_SWITCH,        // The wall switch (SW) changed
+    UI_INPUT_TAP2,          // Exactly 2 taps: decided as a tap, on relay 2 of a 2-channel board
 } ui_input_t;
 
 // What the wall switch terminal is wired to on this variant.
@@ -67,6 +69,8 @@ typedef struct {
     ui_switch_role_t switch_role;
     ui_switch_mode_t switch_mode; // Toggle role only
     bool switch_active;         // UI_INPUT_SWITCH: the switch is now on (pressed)
+    uint8_t channels;           // Relays on the board; 0 means 1
+    uint8_t switch_channel;     // UI_INPUT_SWITCH: which input changed (0 = SW1)
 } ui_state_t;
 
 typedef enum {
@@ -88,6 +92,11 @@ typedef enum {
 } ui_outcome_t;
 
 ui_outcome_t ui_decide(ui_input_t input, const ui_state_t *st);
+
+// Which relay a relay outcome of ui_decide() acts on (0 = relay 1): a tap is
+// relay 1, 2 taps relay 2 on a 2-channel board (relay 1 otherwise), and a
+// wall switch its own relay.
+uint8_t ui_decide_channel(ui_input_t input, const ui_state_t *st);
 
 // The switch mode's name on the Wi-Fi page: "toggle", "push", "follow",
 // "disabled". parse() is false for anything else.

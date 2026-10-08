@@ -151,7 +151,8 @@ static bool s_maintenance_active = false;
 // What this boot found in the record: its magic if valid, else 0.
 static bool s_record_taken = false;
 static uint32_t s_record_found = 0;
-static bool s_record_relay_on = false;
+// Bit n: relay n+1 was on. Bit 0 alone is what single-relay firmware wrote.
+static uint32_t s_record_relays = 0;
 
 static uint32_t maint_check(const maint_record_t *r)
 {
@@ -161,7 +162,7 @@ static uint32_t maint_check(const maint_record_t *r)
 static void record_store(uint32_t magic)
 {
     s_maint_record.magic = magic;
-    s_maint_record.relay_on = relay_get() ? 1 : 0;
+    s_maint_record.relay_on = relay_get_mask();
     s_maint_record.check = maint_check(&s_maint_record);
 }
 
@@ -175,7 +176,7 @@ static void take_record(void)
     bool valid = (magic == MAINT_RECORD_MAGIC || magic == EXIT_RECORD_MAGIC) &&
                  s_maint_record.check == maint_check(&s_maint_record) && esp_reset_reason() == ESP_RST_SW;
     s_record_found = valid ? magic : 0;
-    s_record_relay_on = s_maint_record.relay_on != 0;
+    s_record_relays = s_maint_record.relay_on;
     // Consume it now: a crash in maintenance mode restarts normally.
     s_maint_record.magic = 0;
     s_maint_record.check = 0;
@@ -192,15 +193,27 @@ esp_err_t shelly_maintenance_request(void)
 #endif
 }
 
-bool shelly_maintenance_boot_pending(bool *relay_was_on)
+bool shelly_maintenance_boot_pending_mask(uint32_t *relays_on)
 {
     take_record();
     if (s_record_found != MAINT_RECORD_MAGIC || !MAINTENANCE_BUILT) {
         return false;
     }
     s_maintenance_active = true;
+    if (relays_on != nullptr) {
+        *relays_on = s_record_relays;
+    }
+    return true;
+}
+
+bool shelly_maintenance_boot_pending(bool *relay_was_on)
+{
+    uint32_t relays = 0;
+    if (!shelly_maintenance_boot_pending_mask(&relays)) {
+        return false;
+    }
     if (relay_was_on != nullptr) {
-        *relay_was_on = s_record_relay_on;
+        *relay_was_on = (relays & 1u) != 0;
     }
     return true;
 }
@@ -215,14 +228,8 @@ void shelly_maintenance_exit_record(void)
     record_store(EXIT_RECORD_MAGIC);
 }
 
-void shelly_maintenance_carry_relay(uint16_t endpoint_id)
+static void carry_one(uint16_t endpoint_id, bool on)
 {
-    take_record();
-    if (s_record_found != EXIT_RECORD_MAGIC || endpoint_id == 0) {
-        return;
-    }
-    s_record_found = 0;
-    bool on = s_record_relay_on;
     // Stored before Matter starts and without callbacks: the relay itself
     // follows once StartUpOnOff has been applied to this value.
     attribute_t *attribute =
@@ -233,7 +240,30 @@ void shelly_maintenance_carry_relay(uint16_t endpoint_id)
         ESP_LOGW(TAG, "Relay state from Wi-Fi maintenance mode not kept: %s", esp_err_to_name(err));
         return;
     }
-    ESP_LOGI(TAG, "Back from Wi-Fi maintenance mode, where the relay was %s", on ? "on" : "off");
+    ESP_LOGI(TAG, "Back from Wi-Fi maintenance mode, where the relay on endpoint %u was %s", endpoint_id,
+             on ? "on" : "off");
+}
+
+void shelly_maintenance_carry_relays(const uint16_t *endpoint_ids, int count)
+{
+    take_record();
+    if (s_record_found != EXIT_RECORD_MAGIC) {
+        return;
+    }
+    s_record_found = 0;
+    for (int ch = 0; ch < count && ch < 32; ch++) {
+        if (endpoint_ids[ch] != 0) {
+            carry_one(endpoint_ids[ch], (s_record_relays & (1u << ch)) != 0);
+        }
+    }
+}
+
+void shelly_maintenance_carry_relay(uint16_t endpoint_id)
+{
+    if (endpoint_id == 0) {
+        return;
+    }
+    shelly_maintenance_carry_relays(&endpoint_id, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -264,9 +294,11 @@ static bool ota_download_busy(void)
            requestor->GetCurrentUpdateState() != chip::OTARequestorInterface::OTAUpdateStateEnum::kIdle;
 }
 
-static ui_state_t current_state(ui_input_t input, bool switch_active = false)
+static ui_state_t current_state(ui_input_t input, bool switch_active = false, uint8_t switch_channel = 0)
 {
     ui_state_t st = {};
+    st.channels = s_config.channels == 0 ? 1 : s_config.channels;
+    st.switch_channel = switch_channel;
     st.maintenance = shelly_maintenance_active();
 #if CONFIG_SHELLY_MAINTENANCE
     st.maintenance_available = true;
@@ -278,7 +310,7 @@ static ui_state_t current_state(ui_input_t input, bool switch_active = false)
     st.ota_busy = input == UI_INPUT_WIFI_MODE && !st.maintenance && ota_download_busy();
     st.change_pending = input == UI_INPUT_PAIRING && st.maintenance && shelly_change_pending(nullptr, nullptr);
     st.switch_role = s_config.switch_role;
-    st.switch_mode = shelly_switch_mode_get();
+    st.switch_mode = shelly_switch_mode_get_ch(switch_channel);
     st.switch_active = switch_active;
     return st;
 }
@@ -337,8 +369,14 @@ static void run_toggle_to(shelly_ui_toggle_to_fn_t fn, bool on)
     }
 }
 
-static void carry_out(ui_outcome_t outcome)
+static void carry_out(ui_outcome_t outcome, uint8_t ch)
 {
+    // Relay 2's functions on a 2-channel board; relay 1's otherwise.
+    bool second = ch == 1 && s_config.channels > 1;
+    shelly_ui_toggle_fn_t toggle = second ? s_config.toggle2 : s_config.toggle;
+    shelly_ui_toggle_fn_t local_toggle = second ? s_config.local_toggle2 : s_config.local_toggle;
+    shelly_ui_toggle_to_fn_t toggle_to = second ? s_config.toggle_to2 : s_config.toggle_to;
+    shelly_ui_toggle_to_fn_t local_toggle_to = second ? s_config.local_toggle_to2 : s_config.local_toggle_to;
     switch (outcome) {
     case UI_IGNORE:
         break;
@@ -354,21 +392,21 @@ static void carry_out(ui_outcome_t outcome)
         break;
 
     case UI_TOGGLE:
-        run_toggle(s_config.toggle);
+        run_toggle(toggle);
         break;
 
     case UI_LOCAL_TOGGLE:
-        run_toggle(s_config.local_toggle);
+        run_toggle(local_toggle);
         break;
 
     case UI_TURN_ON:
     case UI_TURN_OFF:
-        run_toggle_to(s_config.toggle_to, outcome == UI_TURN_ON);
+        run_toggle_to(toggle_to, outcome == UI_TURN_ON);
         break;
 
     case UI_LOCAL_TURN_ON:
     case UI_LOCAL_TURN_OFF:
-        run_toggle_to(s_config.local_toggle_to, outcome == UI_LOCAL_TURN_ON);
+        run_toggle_to(local_toggle_to, outcome == UI_LOCAL_TURN_ON);
         break;
 
     case UI_OPEN_PAIRING:
@@ -421,6 +459,9 @@ static void on_button_action(button_action_t action, void *arg)
     case BUTTON_ACTION_TOGGLE:
         input = UI_INPUT_TAP;
         break;
+    case BUTTON_ACTION_DOUBLE_TAP:
+        input = UI_INPUT_TAP2;
+        break;
     case BUTTON_ACTION_PAIRING:
         input = UI_INPUT_PAIRING;
         break;
@@ -434,7 +475,7 @@ static void on_button_action(button_action_t action, void *arg)
         return;
     }
     ui_state_t st = current_state(input);
-    carry_out(ui_decide(input, &st));
+    carry_out(ui_decide(input, &st), ui_decide_channel(input, &st));
 }
 
 esp_err_t shelly_ui_init(const shelly_ui_config_t *config)
@@ -449,10 +490,15 @@ esp_err_t shelly_ui_init(const shelly_ui_config_t *config)
     return button_init(on_button_action, nullptr);
 }
 
+void shelly_ui_switch_changed_ch(int ch, bool active)
+{
+    ui_state_t st = current_state(UI_INPUT_SWITCH, active, (uint8_t)ch);
+    carry_out(ui_decide(UI_INPUT_SWITCH, &st), ui_decide_channel(UI_INPUT_SWITCH, &st));
+}
+
 void shelly_ui_switch_changed(bool active)
 {
-    ui_state_t st = current_state(UI_INPUT_SWITCH, active);
-    carry_out(ui_decide(UI_INPUT_SWITCH, &st));
+    shelly_ui_switch_changed_ch(0, active);
 }
 
 ui_switch_role_t shelly_ui_switch_role(void)

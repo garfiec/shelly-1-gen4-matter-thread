@@ -32,10 +32,12 @@ This page explains how the firmware protects the load and the device, how it mea
 |---|---|---|---|---|
 | Overcurrent | 1PM Gen4 | Heat model on current above 16.5 A (see below) | Relay off, **latched** | A deliberate On, or a power cycle |
 | Overvoltage | 1PM Gen4 | Above 150 V (120 V mains) or 264 V (230/240 V mains) for 5s | Relay off | Automatic, 30s after the voltage is back in range |
-| Over-temperature | All | Board NTC above 90°C for 10s (1PM), or ESP32 die above 75°C for 10s (others) | Relay off, turn-on refused | Automatic, below 75°C (NTC) or 65°C (die) |
+| Over-temperature | All | Board NTC above 90°C for 10s (1PM, 2PM), or ESP32 die above 75°C for 10s (others) | Relay off (both relays on the 2PM), turn-on refused | Automatic, below 75°C (NTC) or 65°C (die) |
 | No temperature sensor | All | No usable temperature reading | Turn-on refused | Automatic, when a reading returns |
 | Welded relay | 1PM Gen4 | 0.5 A or more flowing 5s after the relay was switched off | Alert only | Current stops, or the next On/Off |
 | Meter lost | 1PM Gen4 | No valid reading from the power meter for 5s | Alert only; the relay keeps working | Automatic |
+
+The first Shelly 2PM Gen4 builds have **no power metering, so no overcurrent, overvoltage, welded-relay or meter alerts**: over-temperature is their only protection, and the circuit breaker is the protection against overload. Metering and electrical protection for the 2PM come in a later build.
 
 On a DC supply the meter can't measure, so overcurrent and overvoltage protection don't work there. See [Supply and loads](#supply-and-loads), which also covers inductive loads and the EU model.
 
@@ -85,7 +87,7 @@ A lost neutral on a 120/240 V split-phase supply can put up to 240 V across a 12
 
 Every device monitors its temperature every 2 seconds and reports it on the Temperature Sensor endpoint.
 
-- **Shelly 1PM Gen4:** the board NTC. Trip above 90°C for 10 seconds, clear below 75°C. The NTC's beta value (3350) is an estimate, not a measurement, and the thresholds leave room for that. If the NTC reads as an open circuit (or cannot be read) three times in a row, the firmware raises a sensor fault and falls back to the ESP32 die sensor with the die thresholds. A shorted NTC reads as very hot and trips.
+- **Shelly 1PM Gen4 and 2PM Gen4:** the board NTC. On the 2PM a trip turns both relays off and both report Off. Trip above 90°C for 10 seconds, clear below 75°C. The NTC's beta value (3350) is an estimate, not a measurement, and the thresholds leave room for that. If the NTC reads as an open circuit (or cannot be read) three times in a row, the firmware raises a sensor fault and falls back to the ESP32 die sensor with the die thresholds. A shorted NTC reads as very hot and trips.
 - **All other devices:** the ESP32-C6 die temperature. Trip above 75°C for 10 seconds, clear below 65°C.
 
 While over temperature, turn-on is refused. If no sensor gives a usable reading at all (three failed reads in a row), a sensor fault is raised and turn-on is refused until a reading returns. The relay is not switched off in that case, because the firmware cannot tell that anything is actually hot.

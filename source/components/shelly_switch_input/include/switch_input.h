@@ -20,9 +20,17 @@
 
 #include <esp_err.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <sdkconfig.h>
 
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#if defined(CONFIG_SHELLY_CHANNELS) && CONFIG_SHELLY_CHANNELS > 1
+#define SWITCH_INPUT_CHANNELS CONFIG_SHELLY_CHANNELS
+#else
+#define SWITCH_INPUT_CHANNELS 1
 #endif
 
 // Called on the switch task each time the debounced SW level changes.
@@ -47,8 +55,20 @@ typedef void (*switch_input_cb_t)(bool level, void *arg);
 // Returns ESP_OK on success, error code on failure.
 esp_err_t switch_input_init(switch_input_cb_t on_change, void *arg);
 
+// The same for every input on a 2-channel board (SW1 is CONFIG_SHELLY_SWITCH_GPIO,
+// SW2 CONFIG_SHELLY_SWITCH2_GPIO): on_change gets the input's channel, 0 for SW1.
+// Use one of the two init functions, once.
+typedef void (*switch_input_ch_cb_t)(int ch, bool level, void *arg);
+esp_err_t switch_input_init_ch(switch_input_ch_cb_t on_change, void *arg);
+
 // The current raw level of the SW pin (true = HIGH).
 bool switch_input_get_level(void);
+bool switch_input_get_level_ch(int ch);
+
+// For diagnostics: the last settled level, and the raw edges the interrupt
+// has seen since boot.
+bool switch_input_stable_level_ch(int ch);
+uint32_t switch_input_edge_count(int ch);
 
 // Whether a level means the switch is on or pressed
 // (CONFIG_SHELLY_SWITCH_ACTIVE_HIGH).

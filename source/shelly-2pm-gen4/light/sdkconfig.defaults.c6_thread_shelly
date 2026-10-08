@@ -1,0 +1,114 @@
+CONFIG_IDF_TARGET="esp32c6"
+
+# libsodium
+CONFIG_LIBSODIUM_USE_MBEDTLS_SHA=y
+
+# NIMBLE
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_EXT_ADV=n
+CONFIG_BT_NIMBLE_HCI_EVT_BUF_SIZE=70
+CONFIG_USE_BLE_ONLY_FOR_COMMISSIONING=n
+
+# Enable OpenThread
+CONFIG_OPENTHREAD_ENABLED=y
+CONFIG_OPENTHREAD_SRP_CLIENT=y
+CONFIG_OPENTHREAD_DNS_CLIENT=y
+CONFIG_OPENTHREAD_LOG_LEVEL_DYNAMIC=n
+CONFIG_OPENTHREAD_LOG_LEVEL_NOTE=y
+CONFIG_OPENTHREAD_CLI=n
+
+# Thread device type — Full Thread Device (FTD), Router-eligible
+# This firmware intentionally runs as FTD to actively route Thread traffic
+# for other devices on the mesh, trading Sleepy End Device (SED) power
+# savings for mesh extension benefit. See README Power Consumption section.
+CONFIG_OPENTHREAD_FTD=y
+
+# Disable lwip ipv6 autoconfig
+CONFIG_LWIP_IPV6_AUTOCONFIG=n
+
+# Use a custom partition table
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_OFFSET=0x10000
+
+# LwIP config for OpenThread
+CONFIG_LWIP_IPV6_NUM_ADDRESSES=8
+CONFIG_LWIP_MULTICAST_PING=y
+
+# MDNS platform
+CONFIG_USE_MINIMAL_MDNS=n
+CONFIG_ENABLE_EXTENDED_DISCOVERY=y
+
+# Enable OTA Requestor
+CONFIG_ENABLE_OTA_REQUESTOR=y
+
+# Disable STA for ESP32C6
+CONFIG_ENABLE_WIFI_STATION=n
+
+# Button
+CONFIG_BUTTON_PERIOD_TIME_MS=20
+# Gesture timing (taps, holds) is button_logic.h, not iot_button:
+# see docs/BUTTON-AND-LED.md.
+
+# Enable chip shell
+CONFIG_ENABLE_CHIP_SHELL=y
+
+# Shelly 2PM Gen4 Settings
+
+# Endpoint count
+# Root, relay 1, relay 2, temperature, and one spare: too few makes an
+# endpoint ::create fail at boot.
+CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=5
+
+# Flash
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+
+# Hardware version (numeric; matches Shelly PCB rev v0.1.2)
+# String "v0.1.2" set via CHIPProjectConfig.h
+CONFIG_DEFAULT_DEVICE_HARDWARE_VERSION=0
+
+# Hardware version (numeric; matches Shelly PCB rev v0.1.2)
+# String "v0.1.2" set via CHIPProjectConfig.h
+CONFIG_CHIP_PROJECT_CONFIG="main/CHIPProjectConfig.h"
+
+# Device Identification Options
+# Set a unique variant PID for OTA
+CONFIG_DEVICE_PRODUCT_ID=0x8008
+
+# Robustness
+
+# Roll back a new OTA image that does not confirm itself. The app confirms
+# after 60s of healthy running (shelly_app_common).
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Reboot if the health task stops feeding the task watchdog (the Matter
+# thread is wedged). Only the health task is watched.
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_PANIC=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=60
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+
+# Timer callbacks update Matter attributes (the Opener pulse, iot_button).
+CONFIG_ESP_TIMER_TASK_STACK_SIZE=6144
+
+# The device's own Matter setup code (shelly_setup_code.cpp)
+CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y
+
+# Two relays and two wall switch inputs
+CONFIG_SHELLY_CHANNELS=2
+CONFIG_SHELLY_RELAY_READBACK=y
+
+# Board bring-up (docs/BUILDING.md): the diagnostics log, the hardware
+# snapshot and a read-only probe of the ADE7953 power meter, all shown on
+# the Wi-Fi mode page. Metering itself is not in this build.
+CONFIG_SHELLY_DIAG_LOG=y
+CONFIG_SHELLY_HW_SNAPSHOT=y
+CONFIG_SHELLY_ADE7953_PROBE=y
+
+# The diagnostics log hook adds about 280 B of stack to every task that
+# logs: give the two tightest ones room.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=3072
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096

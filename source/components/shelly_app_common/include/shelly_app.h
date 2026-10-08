@@ -148,6 +148,13 @@ typedef struct {
     // Opener's contact report, the Light Switch's bound command. NULL for
     // the toggle role.
     void (*switch_handler)(void);
+    // Relays on the board: 0 or 1 for one, 2 for the 2PM. With 2, two taps
+    // and the second wall switch use the functions below for relay 2.
+    uint8_t channels;
+    shelly_ui_toggle_fn_t toggle2;
+    shelly_ui_toggle_fn_t local_toggle2;
+    shelly_ui_toggle_to_fn_t toggle_to2;
+    shelly_ui_toggle_to_fn_t local_toggle_to2;
 } shelly_ui_config_t;
 
 // Start the button (button_init) with the device UI. Call during boot,
@@ -158,6 +165,8 @@ esp_err_t shelly_ui_init(const shelly_ui_config_t *config);
 // ui_decide() decides what a change does in each state and switch mode.
 // active: the switch is now on or pressed (switch_input_active()).
 void shelly_ui_switch_changed(bool active);
+// The same for one input of a 2-channel board (0 = SW1).
+void shelly_ui_switch_changed_ch(int ch, bool active);
 
 // The variant's wall-switch role (from shelly_ui_init).
 ui_switch_role_t shelly_ui_switch_role(void);
@@ -167,6 +176,14 @@ ui_switch_role_t shelly_ui_switch_role(void);
 // shelly_onoff_toggle(). True if the relay accepted the change.
 bool shelly_local_relay_toggle(void);
 bool shelly_local_relay_toggle_to(bool on);
+// The same for one relay (0 = relay 1).
+bool shelly_local_relay_toggle_ch(int ch);
+bool shelly_local_relay_toggle_to_ch(int ch, bool on);
+
+// Which relay channel an OnOff endpoint drives. Every variant's relay
+// endpoints default to channel 0; a 2-channel variant registers its second.
+void shelly_relay_endpoint_register(int ch, uint16_t endpoint_id);
+int shelly_relay_endpoint_channel(uint16_t endpoint_id);
 
 // ---------------------------------------------------------------------------
 // Wi-Fi maintenance mode (shelly_maintenance component)
@@ -182,6 +199,8 @@ esp_err_t shelly_maintenance_request(void);
 // (shelly_maintenance_run) instead of starting Matter. The request is
 // consumed either way, so a crash in maintenance mode comes back normally.
 bool shelly_maintenance_boot_pending(bool *relay_was_on);
+// The same with every relay: bit n set means relay n+1 was on.
+bool shelly_maintenance_boot_pending_mask(uint32_t *relays_on);
 
 // True during a maintenance boot.
 bool shelly_maintenance_active(void);
@@ -196,6 +215,10 @@ void shelly_maintenance_exit_record(void);
 // applies to the state the relay really had (P-03) instead of the one from
 // before maintenance mode. The Opener, momentary, never calls it.
 void shelly_maintenance_carry_relay(uint16_t endpoint_id);
+// The same for every relay at once (endpoint_ids[n] is relay n+1's). The
+// record is consumed by the first carry call, so a 2-channel variant must
+// use this one.
+void shelly_maintenance_carry_relays(const uint16_t *endpoint_ids, int count);
 
 // Internal: run by shelly_app_started(). Performs a factory reset that was
 // requested before Matter was up (see shelly_ui.cpp).

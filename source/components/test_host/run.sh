@@ -78,4 +78,22 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
 
 "$OUT_DIAG"
 
+# Board bring-up data: the hardware snapshot and the ADE7953 register table.
+OUT_HW="${TMPDIR:-/tmp}/shelly-test-hw"
+${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
+    -I$C/shelly_hw_snapshot/include -I$C/shelly_ade7953_probe/include \
+    test_hw.c \
+    $C/shelly_hw_snapshot/hw_snapshot.c \
+    $C/shelly_ade7953_probe/ade7953_regs.c \
+    -o "$OUT_HW"
+
+"$OUT_HW"
+
+# The ADE7953 probe is read only: nothing in it may send a write to the
+# chip (a plain transmit is how a register gets written).
+if grep -nE 'i2c_master_transmit[[:space:]]*\(|i2c_master_multi_buffer_transmit' $C/shelly_ade7953_probe/*.c* ; then
+    echo "The ADE7953 probe must not write to the chip" >&2
+    exit 1
+fi
+
 python3 ../../../scripts/check-ui-spec.py

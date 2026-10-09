@@ -168,7 +168,7 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 - **A window already open** restarts with its full time, unless a controller opened it with its own pairing code (Share device, for example): that window is left as it is, so the code the controller shows keeps working.
 - **Refused** while someone is part-way through pairing, so their session is not cut off.
 
-**Enter Wi-Fi mode** (experimental). The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own open Wi-Fi network named `Shelly-<model>-<last six digits of the MAC>`, and the page at `http://192.168.33.1` installs a firmware update and shows the device's Matter setup code. See [Updating](UPDATING.md#wi-fi-maintenance-mode).
+**Enter Wi-Fi mode** (experimental). The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own open Wi-Fi network named like stock Shelly's, `Shelly<model>-<the MAC on the sticker>`, and the page at `http://192.168.33.1` installs a firmware update and shows the device's Matter setup code. See [Updating](UPDATING.md#wi-fi-maintenance-mode).
 - The relay keeps its state across the restart, apart from a brief off while it reboots. The Opener's trigger always stays off.
 - The mode ends after an upload, on the page's Exit button, with the 5 s hold again, or after 10 minutes with the page closed.
 - Home Assistant shows the device as unavailable until it is back in normal mode.

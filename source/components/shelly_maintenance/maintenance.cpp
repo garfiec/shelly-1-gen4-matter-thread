@@ -143,6 +143,17 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     touch();
 }
 
+// The model as stock names it in its network name: the hardware code without
+// its leading S (S2PMG4 -> 2PMG4), and 1MiniG4 for the Mini.
+static const char *stock_model_name()
+{
+    const char *code = shelly_hw_desc.hw_code;
+    if (strcmp(code, "Mini1G4") == 0) {
+        return "1MiniG4";
+    }
+    return code[0] == 'S' ? code + 1 : code;
+}
+
 static esp_err_t start_wifi(void)
 {
     esp_err_t err = esp_netif_init();
@@ -193,9 +204,13 @@ static esp_err_t start_wifi(void)
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     snprintf(s_mac, sizeof(s_mac), "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
+    // Stock Shelly's name for its setup network: the model and the base MAC
+    // printed on the sticker, e.g. Shelly2PMG4-AABBCCDDEEFF.
+    uint8_t base[6] = {};
+    esp_efuse_mac_get_default(base);
     wifi_config_t ap_cfg = {};
-    int n = snprintf((char *)ap_cfg.ap.ssid, sizeof(ap_cfg.ap.ssid), "Shelly-%s-%02X%02X%02X",
-                     shelly_hw_desc.hw_code, mac[3], mac[4], mac[5]);
+    int n = snprintf((char *)ap_cfg.ap.ssid, sizeof(ap_cfg.ap.ssid), "Shelly%s-%02X%02X%02X%02X%02X%02X",
+                     stock_model_name(), base[0], base[1], base[2], base[3], base[4], base[5]);
     ap_cfg.ap.ssid_len = (uint8_t)(n < (int)sizeof(ap_cfg.ap.ssid) ? n : (int)sizeof(ap_cfg.ap.ssid));
     ap_cfg.ap.channel = AP_CHANNEL;
     ap_cfg.ap.authmode = WIFI_AUTH_OPEN;

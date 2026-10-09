@@ -121,7 +121,7 @@ The hold is refused (three quick flashes) within 60 seconds of an update, becaus
 
 ### 3. Upload
 
-1. On a phone or laptop, join the Wi-Fi network named `Shelly-<model>-<last six digits of the MAC>`, for example `Shelly-S1PMG4-A1B2C3`. It is open, like stock Shelly's setup network: while the mode lasts, anyone within Wi-Fi range can use the page, switch the relay and install firmware built for this model. Enter the mode only when you are about to use it, and press **Exit** when you are done.
+1. On a phone or laptop, join the Wi-Fi network named like stock Shelly's, `Shelly<model>-<the 12-digit MAC on the sticker>`, for example `Shelly1PMG4-A1B2C3D4E5F6`. It is open, like stock Shelly's setup network: while the mode lasts, anyone within Wi-Fi range can use the page, switch the relay and install firmware built for this model. Enter the mode only when you are about to use it, and press **Exit** when you are done.
 2. The update page usually opens on its own. If not, browse to `http://192.168.33.1`. Your phone may warn that the network has no internet; that is expected.
 3. The page shows the model, variant, firmware version, relay state and [Matter setup code](#matter-setup-code). Choose the `.ota` file and press **Install**. The LED stays solid while the file uploads and installs.
 4. The device checks the file before erasing anything, installs it into its inactive slot, verifies it and restarts into it.

@@ -1,13 +1,23 @@
 menu "Shelly electrical protection"
 
-    # Only used on boards with a power meter (SHELLY_HAS_BL0942). The
+    # Only used on boards with a power meter (SHELLY_HAS_METER). The
     # defaults suit the UL-rated Shelly 1PM Gen4 (15 A, 120 V). This is
     # secondary protection: the home's breaker is the primary protection.
     # See docs/PROTECTION.md.
 
     config SHELLY_PROT_RATED_CURRENT_MA
-        int "Rated current (mA)"
+        int "Rated current per relay (mA)"
         default 15000
+
+    config SHELLY_PROT_TOTAL_RATED_CURRENT_MA
+        int "Rated current of the whole device (mA), 0 for none"
+        default 0
+        help
+            For a board with more than one relay and a limit on their sum
+            (the Shelly 2PM Gen4: 10 A per channel, 16 A total). A second
+            I²t model, with the same pickup margin and trip times scaled to
+            this rating, runs on the sum of the closed relays' currents and
+            trips every relay. Ignored on a single-relay board.
 
     config SHELLY_PROT_PICKUP_PERCENT
         int "I²t pickup (% of rated current)"
@@ -21,7 +31,8 @@ menu "Shelly electrical protection"
         default 2800
         help
             With the defaults: about 54s at 18 A, 12s at 22.5 A, 4.6s at
-            29.7 A (the meter's full scale).
+            29.7 A (the 1PM meter's full scale). It scales with the square
+            of the rated current for the same trip times.
 
     config SHELLY_PROT_I2T_TAU_S
         int "I²t cooling time constant (s)"

@@ -101,12 +101,18 @@ CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y
 CONFIG_SHELLY_CHANNELS=2
 CONFIG_SHELLY_RELAY_READBACK=y
 
-# Board bring-up (docs/BUILDING.md): the diagnostics log, the hardware
-# snapshot and a read-only probe of the ADE7953 power meter, all shown on
-# the Wi-Fi mode page. Metering itself is not in this build.
+# The ADE7953 power meter (I2C): metering per relay, and the electrical
+# protection it feeds. 10 A per channel and 16 A for the device (Shelly's
+# ratings); k scaled from the 1PM's 2800 A²s at 15 A for the same trip times.
+CONFIG_SHELLY_HAS_ADE7953=y
+CONFIG_SHELLY_PROT_RATED_CURRENT_MA=10000
+CONFIG_SHELLY_PROT_TOTAL_RATED_CURRENT_MA=16000
+CONFIG_SHELLY_PROT_I2T_K_A2S=1244
+
+# Board data (docs/BUILDING.md): the diagnostics log and the hardware
+# snapshot, with the meter's registers, shown on the Wi-Fi mode page.
 CONFIG_SHELLY_DIAG_LOG=y
 CONFIG_SHELLY_HW_SNAPSHOT=y
-CONFIG_SHELLY_ADE7953_PROBE=y
 
 # The diagnostics log hook adds about 280 B of stack to every task that
 # logs: give the two tightest ones room.

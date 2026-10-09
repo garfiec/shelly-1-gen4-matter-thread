@@ -28,6 +28,7 @@
 #include <relay.h>
 
 #include "shelly_app.h"
+#include "shelly_calibration.h"
 #include "shelly_setup_code.h"
 
 static const char *TAG = "settings";
@@ -151,6 +152,19 @@ bool shelly_switch_mode_stage(ui_switch_mode_t mode)
     return shelly_switch_mode_stage_ch(0, mode);
 }
 
+bool shelly_cal_stage(int ch, const cal_ratios_t *ratios)
+{
+    if (!shelly_cal_available() || !cal_ratios_valid(ratios) || ch < 0 || ch >= RELAY_CHANNELS) {
+        return false;
+    }
+    shelly_change_t change = {};
+    change.kind = SHELLY_CHANGE_CALIBRATION;
+    change.channel = (uint8_t)ch;
+    change.cal = *ratios;
+    shelly_change_stage(&change);
+    return true;
+}
+
 void shelly_change_cancel(void)
 {
     pthread_mutex_lock(&s_lock);
@@ -195,6 +209,9 @@ bool shelly_change_confirm(void)
                 ESP_LOGW(TAG, "Wall switch mode saved: %s", ui_switch_mode_name(s_change.switch_mode));
 #endif
             }
+            break;
+        case SHELLY_CHANGE_CALIBRATION:
+            ok = shelly_cal_save(&s_change.cal);
             break;
         case SHELLY_CHANGE_NONE:
         default:

@@ -81,6 +81,7 @@ menu "Shelly board"
     config SHELLY_HAS_BL0942
         bool "BL0942 power meter fitted"
         default y
+        select SHELLY_HAS_METER
 
     config SHELLY_BL0942_UART_NUM
         int "BL0942 UART"

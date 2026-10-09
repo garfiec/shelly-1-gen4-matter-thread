@@ -17,7 +17,8 @@
 // shelly_settings.h
 //
 // The device settings changed on the Wi-Fi maintenance page: the Matter
-// setup code (shelly_setup_code.h) and the wall-switch mode. A change made
+// setup code (shelly_setup_code.h), the wall-switch mode and, on metered
+// boards, the meter calibration (shelly_calibration.h). A change made
 // on the page waits here until the button is pressed 3 times within
 // SHELLY_CHANGE_CONFIRM_S (docs/BUTTON-AND-LED.md, B-26), so nobody on the
 // open network can change a setting without the device in hand.
@@ -27,6 +28,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <calibration_logic.h>
 #include <setup_code.h>
 #include <ui_policy.h>
 
@@ -51,13 +53,16 @@ typedef enum {
     SHELLY_CHANGE_NONE = 0,
     SHELLY_CHANGE_SETUP_CODE,
     SHELLY_CHANGE_SWITCH_MODE,
+    SHELLY_CHANGE_CALIBRATION,
 } shelly_change_kind_t;
 
 typedef struct {
     shelly_change_kind_t kind;
     setup_code_t code;              // SHELLY_CHANGE_SETUP_CODE
     ui_switch_mode_t switch_mode;   // SHELLY_CHANGE_SWITCH_MODE
-    uint8_t channel;                // SHELLY_CHANGE_SWITCH_MODE: which input (0 = SW1)
+    uint8_t channel;                // SHELLY_CHANGE_SWITCH_MODE: which input (0 = SW1);
+                                    // SHELLY_CHANGE_CALIBRATION: which relay was measured
+    cal_ratios_t cal;               // SHELLY_CHANGE_CALIBRATION: the new ratios
 } shelly_change_t;
 
 // Stage a change. It replaces any change already waiting.
@@ -68,13 +73,17 @@ void shelly_change_stage(const shelly_change_t *change);
 bool shelly_switch_mode_stage(ui_switch_mode_t mode);
 bool shelly_switch_mode_stage_ch(int ch, ui_switch_mode_t mode);
 
+// Stage new meter calibration ratios (all 1.0 to go back to the built-in
+// calibration). False if this board has no meter or a ratio is out of bounds.
+bool shelly_cal_stage(int ch, const cal_ratios_t *ratios);
+
 void shelly_change_cancel(void);
 
 // The waiting change and the seconds left to confirm it; false if none.
 bool shelly_change_pending(shelly_change_t *out, uint32_t *secs_left);
 
 // Save the waiting change: a setup code applies from the next normal boot,
-// a switch mode at once. False if none is waiting or the save failed.
+// a switch mode and a calibration at once. False if none is waiting or the save failed.
 bool shelly_change_confirm(void);
 
 #ifdef __cplusplus

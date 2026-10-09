@@ -137,7 +137,14 @@ extern "C" void app_main()
         thermal_init();
         protection_init();
         protection_attach_local_inputs();
-        metering_init();
+        // The meter feeds protection and the page's readings and calibration.
+        // Skipped after a Wi-Fi mode boot that died with it running, so Wi-Fi
+        // mode stays usable; overcurrent and overvoltage are then off here,
+        // so the relays start off rather than restoring a load unprotected.
+        bool meter_on = shelly_maintenance_meter_allowed();
+        if (meter_on) {
+            metering_init();
+        }
         switch_input_init(app_switch_changed, nullptr);
         shelly_ui_config_t maintenance_ui = {
             .toggle = app_toggle,
@@ -149,7 +156,7 @@ extern "C" void app_main()
         shelly_ui_init(&maintenance_ui);
         // The relay gate refuses a latched trip anyway; this keeps the
         // restore from even trying.
-        shelly_maintenance_run(relay_was_on && !protection_is_latched(), shelly_local_relay_toggle);
+        shelly_maintenance_run(relay_was_on && meter_on && !protection_is_latched(), shelly_local_relay_toggle);
     }
 #endif
 

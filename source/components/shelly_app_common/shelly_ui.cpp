@@ -91,9 +91,12 @@ static void restart_after_flash(void)
     esp_restart();
 }
 
+static void meter_guard_clean_exit(void);
+
 static void defer_factory_reset(void)
 {
     ESP_LOGW(TAG, "Factory reset requested before Matter is up: restarting to do it");
+    meter_guard_clean_exit();
     s_reset_record.magic = RESET_RECORD_MAGIC;
     s_reset_record.check = ~RESET_RECORD_MAGIC;
     status_led_flash_accepted();
@@ -166,12 +169,15 @@ static void record_store(uint32_t magic)
     s_maint_record.check = maint_check(&s_maint_record);
 }
 
+static void meter_guard_forget_after_power_on(void);
+
 static void take_record(void)
 {
     if (s_record_taken) {
         return;
     }
     s_record_taken = true;
+    meter_guard_forget_after_power_on();
     uint32_t magic = s_maint_record.magic;
     bool valid = (magic == MAINT_RECORD_MAGIC || magic == EXIT_RECORD_MAGIC) &&
                  s_maint_record.check == maint_check(&s_maint_record) && esp_reset_reason() == ESP_RST_SW;
@@ -225,7 +231,93 @@ bool shelly_maintenance_active(void)
 
 void shelly_maintenance_exit_record(void)
 {
+    meter_guard_clean_exit();
     record_store(EXIT_RECORD_MAGIC);
+}
+
+void shelly_maintenance_failed_record(void)
+{
+    record_store(EXIT_RECORD_MAGIC);
+}
+
+// ---------------------------------------------------------------------------
+// The meter in Wi-Fi maintenance mode
+// ---------------------------------------------------------------------------
+//
+// Wi-Fi mode is the only way to install firmware on a device without a
+// serial cable, so the meter code it runs (for the calibration page) must
+// never be able to take it down for good. A crash in Wi-Fi mode restarts
+// into normal mode, which runs fine and confirms the image, so the 60 s
+// rollback doesn't help, and holding 5 s again would crash again. This
+// record marks a maintenance boot that started the meter; every clean way
+// out clears the mark. Found still set, the meter stays off in Wi-Fi mode
+// until the next power cycle. RTC memory may keep its contents through a
+// short one, and the record is only read in maintenance boots, which are
+// never power-on boots: the power-on boot forgets it (take_record()).
+
+#define METER_GUARD_MAGIC 0x444D4D53u  // 'SMMD'
+
+typedef struct {
+    uint32_t magic;
+    uint32_t running;       // A maintenance boot started the meter and hasn't left cleanly
+    uint32_t died;          // One didn't: keep the meter off until a power cycle
+    uint32_t check;
+} meter_guard_t;
+
+static RTC_NOINIT_ATTR meter_guard_t s_meter_guard;
+static bool s_meter_skipped = false;
+
+static uint32_t meter_guard_check(const meter_guard_t *g)
+{
+    return ~(g->magic ^ (g->running * 0x9E3779B9u) ^ (g->died * 0x85EBCA6Bu));
+}
+
+static bool meter_guard_valid(void)
+{
+    return s_meter_guard.magic == METER_GUARD_MAGIC && s_meter_guard.check == meter_guard_check(&s_meter_guard) &&
+           esp_reset_reason() != ESP_RST_POWERON;
+}
+
+static void meter_guard_store(bool running, bool died)
+{
+    s_meter_guard.magic = METER_GUARD_MAGIC;
+    s_meter_guard.running = running ? 1 : 0;
+    s_meter_guard.died = died ? 1 : 0;
+    s_meter_guard.check = meter_guard_check(&s_meter_guard);
+}
+
+static void meter_guard_forget_after_power_on(void)
+{
+    if (esp_reset_reason() == ESP_RST_POWERON) {
+        s_meter_guard.magic = 0;
+        s_meter_guard.check = 0;
+    }
+}
+
+static void meter_guard_clean_exit(void)
+{
+    if (s_maintenance_active && meter_guard_valid()) {
+        meter_guard_store(false, s_meter_guard.died != 0);
+    }
+}
+
+bool shelly_maintenance_meter_allowed(void)
+{
+    bool died = meter_guard_valid() && (s_meter_guard.running != 0 || s_meter_guard.died != 0);
+    if (died) {
+        meter_guard_store(false, true);
+        s_meter_skipped = true;
+        ESP_LOGW(TAG, "The meter stays off in Wi-Fi mode: a Wi-Fi mode boot with it stopped unexpectedly "
+                      "since power-on");
+        return false;
+    }
+    meter_guard_store(true, false);
+    return true;
+}
+
+bool shelly_maintenance_meter_skipped(void)
+{
+    return s_meter_skipped;
 }
 
 static void carry_one(uint16_t endpoint_id, bool on)

@@ -1,0 +1,56 @@
+menu "Shelly ADE7953 power meter"
+
+    config SHELLY_HAS_ADE7953
+        bool "ADE7953 power meter fitted (I2C)"
+        default n
+        select SHELLY_HAS_METER
+        help
+            The two-channel ADE7953 of the Shelly 2PM Gen4. Channel A meters
+            relay 1, channel B relay 2.
+
+    config SHELLY_ADE7953_SDA_GPIO
+        int "SDA GPIO"
+        depends on SHELLY_HAS_ADE7953
+        default 6
+
+    config SHELLY_ADE7953_SCL_GPIO
+        int "SCL GPIO"
+        depends on SHELLY_HAS_ADE7953
+        default 7
+
+    config SHELLY_ADE7953_I2C_HZ
+        int "I2C clock (Hz)"
+        depends on SHELLY_HAS_ADE7953
+        default 200000
+
+    # Calibration multipliers in ESPHome's scaling (ade7953_codec.h),
+    # measured on one Shelly 2PM Gen4 against a plug-in meter with a
+    # resistive load (PF 1.00): 3.31 A / 117.35 V / 389 W on channel A,
+    # 3.315 A / 117.37 V / 389.5 W on channel B.
+
+    config SHELLY_ADE7953_V_MUL
+        string "Voltage multiplier"
+        depends on SHELLY_HAS_ADE7953
+        default "0.9857"
+
+    config SHELLY_ADE7953_IA_MUL
+        string "Channel A (relay 1) current multiplier"
+        depends on SHELLY_HAS_ADE7953
+        default "3.795"
+
+    config SHELLY_ADE7953_IB_MUL
+        string "Channel B (relay 2) current multiplier"
+        depends on SHELLY_HAS_ADE7953
+        default "3.812"
+
+    config SHELLY_ADE7953_PA_MUL
+        string "Channel A (relay 1) power multiplier"
+        depends on SHELLY_HAS_ADE7953
+        default "-3.726"
+
+    config SHELLY_ADE7953_PB_MUL
+        string "Channel B (relay 2) power multiplier"
+        depends on SHELLY_HAS_ADE7953
+        default "-3.739"
+
+endmenu

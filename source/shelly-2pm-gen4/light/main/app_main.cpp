@@ -34,7 +34,8 @@
 #if CONFIG_SHELLY_MAINTENANCE
 #include <maintenance.h>
 #endif
-#include <ade7953_probe.h>
+#include <metering.h>
+#include <protection.h>
 #include <shelly_hw_snapshot.h>
 #include <status_led.h>
 #include <thermal.h>
@@ -168,8 +169,25 @@ extern "C" void app_main()
     if (shelly_maintenance_boot_pending_mask(&relays_were_on)) {
         relay_init();
         thermal_init();
+        protection_init();
+        protection_attach_local_inputs();
+        // The meter feeds protection and the page's readings and calibration.
+        // Skipped after a Wi-Fi mode boot that died with it running, so Wi-Fi
+        // mode stays usable; overcurrent and overvoltage are then off here,
+        // so the relays start off rather than restoring a load unprotected.
+        bool meter_on = shelly_maintenance_meter_allowed();
+        if (meter_on) {
+            metering_init();
+        }
         switch_input_init_ch(app_switch_changed, nullptr);
         shelly_ui_init(&UI_CONFIG);
+        // The relay gate refuses a latched trip anyway; this keeps the
+        // restore from even trying.
+        for (int ch = 0; ch < RELAY_CHANNELS; ch++) {
+            if (!meter_on || protection_is_latched_ch(ch)) {
+                relays_were_on &= ~(1u << ch);
+            }
+        }
         shelly_maintenance_run_ch(relays_were_on, shelly_local_relay_toggle_ch);
     }
 #endif
@@ -177,11 +195,16 @@ extern "C" void app_main()
     MEMORY_PROFILER_DUMP_HEAP_STAT("Bootup");
 
     // Initialize subsystems. Order matters for safety:
-    // relay first so the GPIO is in known-safe state before anything else.
-    // thermal second so overtemp protection is active as early as possible.
+    // relay first so the GPIOs are in known-safe state before anything else.
+    // thermal and electrical protection next, so their gates hold before
+    // anything can turn a relay on. Metering starts the meter task that
+    // feeds protection, and decides (up to 3s) whether this board is on AC
+    // mains and advertises the meter.
     // switch_input and button last for user-facing inputs.
     relay_init();
     thermal_init();
+    protection_init();
+    metering_init();
     switch_input_init_ch(app_switch_changed, nullptr);
     shelly_ui_init(&UI_CONFIG);
 
@@ -208,12 +231,22 @@ extern "C" void app_main()
     relay_endpoint_id = endpoint::get_id(endpoint);
     ESP_LOGI(TAG, "Light 1 created with endpoint_id %d", relay_endpoint_id);
 
+    // Power metering on each relay's endpoint (Electrical Sensor device
+    // type), only on a board that has seen AC mains. Adds clusters, no
+    // endpoint. Then hook the OnOff commands so protection can tell
+    // deliberate user actions from internal writes.
+    metering_add_to_endpoint_ch(0, endpoint);
+    protection_attach_endpoint_ch(0, relay_endpoint_id);
+
     endpoint = on_off_light::create(node, &light_config, ENDPOINT_FLAG_NONE, nullptr);
     ABORT_APP_ON_FAILURE(endpoint != nullptr, ESP_LOGE(TAG, "Failed to create the second on_off_light endpoint"));
 
     relay2_endpoint_id = endpoint::get_id(endpoint);
     shelly_relay_endpoint_register(1, relay2_endpoint_id);
     ESP_LOGI(TAG, "Light 2 created with endpoint_id %d", relay2_endpoint_id);
+
+    metering_add_to_endpoint_ch(1, endpoint);
+    protection_attach_endpoint_ch(1, relay2_endpoint_id);
 
     // Temperature Sensor endpoint exposes the board NTC (or, if it fails,
     // the die sensor) that the thermal monitor already polls. Starts null
@@ -267,6 +300,19 @@ extern "C" void app_main()
     const uint16_t relay_endpoints[] = {relay_endpoint_id, relay2_endpoint_id};
     shelly_maintenance_carry_relays(relay_endpoints, 2);
 
+    // An overcurrent trip survives a software reset. Store Off before Matter
+    // starts, so neither StartUpOnOff nor the boot defaults can re-energize
+    // the load; the protection gate refuses them anyway. After the carry
+    // above, which it overrides.
+    for (int ch = 0; ch < RELAY_CHANNELS; ch++) {
+        if (protection_is_latched_ch(ch)) {
+            esp_matter_attr_val_t off = esp_matter_bool(false);
+            attribute::set_val(attribute::get(relay_endpoints[ch], chip::app::Clusters::OnOff::Id,
+                                              chip::app::Clusters::OnOff::Attributes::OnOff::Id),
+                               &off, false);
+        }
+    }
+
     // The diagnostics provider must be in place before Matter starts: the
     // GeneralDiagnostics boot event reads it at startup.
     shelly_diagnostics_install();
@@ -282,14 +328,16 @@ extern "C" void app_main()
     // Publish boot-time faults, start the watchdog feed and OTA confirmation.
     shelly_app_started();
 
+    // Energy accuracy, the restored energy totals, and meter reporting.
+    metering_matter_started();
+
     // Starting driver with default values
     app_driver_relay_set_defaults(relay_endpoint_id);
     app_driver_relay_set_defaults(relay2_endpoint_id);
 
-    // Board bring-up data for the Wi-Fi mode page: started only now that
-    // Matter is up, so none of it can hold up the boot.
+    // Board data for the Wi-Fi mode page: started only now that Matter is
+    // up, so it can't hold up the boot. The meter's registers join it.
     shelly_hw_snapshot_start();
-    ade7953_probe_start();
 
 #if CONFIG_ENABLE_ENCRYPTED_OTA
     err = esp_matter_ota_requestor_encrypted_init(s_decryption_key, s_decryption_key_len);

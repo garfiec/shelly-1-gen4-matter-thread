@@ -91,7 +91,8 @@ static const ntc_params_t ntc_params = {
 static volatile bool overtemp_active = false;
 static volatile bool no_sensor = false;
 
-static const char *thermal_gate(void)
+// Every channel: the heat is the board's.
+static const char *thermal_gate(int ch)
 {
     if (overtemp_active) {
         return "over temperature";

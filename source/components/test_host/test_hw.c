@@ -18,9 +18,9 @@
 // test_hw.c
 //
 // Host tests for the board bring-up data: the hardware snapshot's storage
-// and text forms (hw_snapshot.c), and the ADE7953 probe's register table
-// (ade7953_regs.c), which must never contain a register whose read changes
-// the chip.
+// and text forms (hw_snapshot.c), and the ADE7953 register table the
+// snapshot reads (ade7953_regs.c), which must never contain a register
+// whose read changes the chip.
 
 #include <stdio.h>
 #include <string.h>

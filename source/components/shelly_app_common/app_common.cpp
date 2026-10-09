@@ -370,12 +370,13 @@ static bool onoff_local_change(uint16_t endpoint_id, int want)
         return false;
     }
     bool target = want >= 0 ? want != 0 : !val.val.b;
+    int ch = shelly_relay_endpoint_channel(endpoint_id);
     if (s_local_toggle_hook != nullptr) {
-        s_local_toggle_hook(target);
+        s_local_toggle_hook(ch, target);
     }
     // Nothing to write: report whether the relay really is there, so a
-    // hook that cleared the 1PM latch re-arms it if the relay is off.
-    bool accepted = relay_get_ch(shelly_relay_endpoint_channel(endpoint_id)) == target;
+    // hook that cleared the overcurrent latch re-arms it if the relay is off.
+    bool accepted = relay_get_ch(ch) == target;
     if (val.val.b != target) {
         val.val.b = target;
         // The PRE_UPDATE callback drives the relay; its refusal (thermal
@@ -383,7 +384,7 @@ static bool onoff_local_change(uint16_t endpoint_id, int want)
         accepted = attribute::update(endpoint_id, OnOff::Id, OnOff::Attributes::OnOff::Id, &val) == ESP_OK;
     }
     if (s_local_toggle_done != nullptr) {
-        s_local_toggle_done(accepted);
+        s_local_toggle_done(ch, accepted);
     }
     return accepted;
 }
@@ -403,11 +404,11 @@ static bool local_relay_change(int ch, int want)
     bool on = relay_get_ch(ch);
     bool target = want >= 0 ? want != 0 : !on;
     if (s_local_toggle_hook != nullptr) {
-        s_local_toggle_hook(target);
+        s_local_toggle_hook(ch, target);
     }
     bool accepted = on == target || relay_set_ch(ch, target) == ESP_OK;
     if (s_local_toggle_done != nullptr) {
-        s_local_toggle_done(accepted);
+        s_local_toggle_done(ch, accepted);
     }
     return accepted;
 }

@@ -94,7 +94,7 @@ Verified: September 2026
 | Power meter (ADE7953) | SDA GPIO6, SCL GPIO7, IRQ GPIO1, I2C |
 | NTC | GPIO4 |
 
-The relays are active high, the switch inputs read high when on, and the button and LED are active low (the button with the internal pull-up). The NTC sits in the ground leg of a 10k divider, like the 1PM's; its beta (3350) is an estimate. The ADE7953 answers at I2C address 0x38; its channel A measures relay 1 and channel B relay 2. These details come from the hardware-tested ESPHome configuration ([shelly-gen4-esphome](https://github.com/automatous-io/shelly-gen4-esphome), `configs/shelly-2pm-gen4.yaml`), not yet from this firmware.
+The relays are active high, the switch inputs read high when on, and the button and LED are active low (the button with the internal pull-up). The NTC sits in the ground leg of a 10k divider, like the 1PM's; its beta (3350) is an estimate. The ADE7953 answers at I2C address 0x38; its channel A measures relay 1 and channel B relay 2. These details come from the hardware-tested ESPHome configuration ([shelly-gen4-esphome](https://github.com/automatous-io/shelly-gen4-esphome), `configs/shelly-2pm-gen4.yaml`), and this firmware's 1.0.0 bring-up build confirmed them on one unit: both relay pins read back as written, each switch input moved its own pin, the button read low while held, the NTC read about 34 °C at idle, and with a load on O1 only channel A's current rose (and on O2 only channel B's).
 
 ## Related documentation
 

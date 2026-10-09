@@ -45,7 +45,9 @@ static const char *TAG = "hw";
 // power cut, which hw_snap_valid() rejects.
 static RTC_NOINIT_ATTR hw_snap_t s_snap;
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
-static bool s_ade_blocked = false;
+// Set once a normal boot has started its snapshot: until then (and in
+// Wi-Fi mode) the snapshot is the last boot's and nothing may change it.
+static volatile bool s_active = false;
 
 static int16_t to_c10(float c)
 {
@@ -140,70 +142,49 @@ void shelly_hw_snapshot_start(void)
     esp_reset_reason_t reason = esp_reset_reason();
     bool kept = reason != ESP_RST_POWERON && hw_snap_valid(&s_snap);
     if (crashed(reason)) {
-        // The last boot crashed. Whatever caused it, this boot runs neither
-        // the sampling nor the meter probe, so they can never cause a crash
-        // loop: Matter stays up and the 5 s hold reaches Wi-Fi mode. The
+        // The last boot crashed. Whatever caused it, this boot doesn't
+        // sample, so the snapshot can never cause a crash loop, and the
         // crashed boot's snapshot is kept for the page.
-        //
-        // If the probe was talking to the chip when it crashed (the guard
-        // was set), or such a crash happened earlier since power-on, the
-        // probe stays off until the next power cycle; a crash anywhere else
-        // only skips it for this boot.
-        s_ade_blocked = true;
         taskENTER_CRITICAL(&s_mux);
-        bool probe_crashed = kept && (s_snap.ade_guard || s_snap.ade_state == HW_ADE_SKIPPED_CRASH);
         if (!kept) {
             hw_snap_reset(&s_snap);
             s_snap.channels = RELAY_CHANNELS;
         }
         s_snap.boots = kept ? s_snap.boots + 1 : 1;
         s_snap.reset_reason = (uint32_t)reason;
-        s_snap.ade_guard = 0;
-        if (probe_crashed) {
-            s_snap.ade_state = HW_ADE_SKIPPED_CRASH;
-        }
         hw_snap_seal(&s_snap);
         taskEXIT_CRITICAL(&s_mux);
-        ESP_LOGW(TAG, "Hardware snapshot and meter probe skipped this boot: the last boot crashed (reset reason %d)%s",
-                 (int)reason, probe_crashed ? "; the meter probe stays off until a power cycle" : "");
+        ESP_LOGW(TAG, "Hardware snapshot skipped this boot: the last boot crashed (reset reason %d)", (int)reason);
         return;
     }
     uint32_t boots = kept ? s_snap.boots + 1 : 1;
-    // A crash while the probe held the chip, recorded by the crash restart
-    // above: leave the chip alone until the next power cycle.
-    s_ade_blocked = kept && s_snap.ade_state == HW_ADE_SKIPPED_CRASH;
 
     taskENTER_CRITICAL(&s_mux);
     hw_snap_reset(&s_snap);
     s_snap.boots = boots;
     s_snap.reset_reason = (uint32_t)reason;
     s_snap.channels = RELAY_CHANNELS;
-    s_snap.ade_state = s_ade_blocked ? HW_ADE_SKIPPED_CRASH : HW_ADE_NOT_RUN;
+    s_snap.ade_state = HW_ADE_NOT_RUN;
     hw_snap_seal(&s_snap);
     taskEXIT_CRITICAL(&s_mux);
+    s_active = true;
 
-    ESP_LOGI(TAG, "Hardware snapshot on (boot %lu, reset reason %d%s)", (unsigned long)boots, (int)reason,
-             s_ade_blocked ? ", meter probe skipped after a crash" : "");
+    ESP_LOGI(TAG, "Hardware snapshot on (boot %lu, reset reason %d)", (unsigned long)boots, (int)reason);
     if (xTaskCreate(snapshot_task, "hw_snap", TASK_STACK_SIZE, nullptr, TASK_PRIORITY, nullptr) != pdPASS) {
         ESP_LOGW(TAG, "Hardware snapshot task not started");
     }
 }
 
-bool shelly_hw_snapshot_ade_blocked(void)
+bool shelly_hw_snapshot_active(void)
 {
-    return s_ade_blocked;
-}
-
-void shelly_hw_snapshot_ade_guard(bool on)
-{
-    taskENTER_CRITICAL(&s_mux);
-    s_snap.ade_guard = on ? 1 : 0;
-    hw_snap_seal(&s_snap);
-    taskEXIT_CRITICAL(&s_mux);
+    return s_active;
 }
 
 void shelly_hw_snapshot_ade_state(hw_ade_state_t state, int32_t err)
 {
+    if (!s_active) {
+        return;
+    }
     taskENTER_CRITICAL(&s_mux);
     s_snap.ade_state = (uint8_t)state;
     s_snap.ade_err = err;
@@ -213,6 +194,9 @@ void shelly_hw_snapshot_ade_state(hw_ade_state_t state, int32_t err)
 
 void shelly_hw_snapshot_ade_reg(uint16_t addr, uint8_t width, bool ok, uint32_t value)
 {
+    if (!s_active) {
+        return;
+    }
     taskENTER_CRITICAL(&s_mux);
     hw_snap_set_reg(&s_snap, addr, width, ok, value);
     hw_snap_seal(&s_snap);
@@ -221,6 +205,9 @@ void shelly_hw_snapshot_ade_reg(uint16_t addr, uint8_t width, bool ok, uint32_t 
 
 void shelly_hw_snapshot_ade_cycle_done(bool dump)
 {
+    if (!s_active) {
+        return;
+    }
     uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000);
     taskENTER_CRITICAL(&s_mux);
     if (dump) {

@@ -106,10 +106,10 @@ void shelly_onoff_set(uint16_t endpoint_id, bool on);
 // shelly_local_relay_* counterparts in maintenance mode, without it: hook
 // before the write, with the state the user asked for (also when the
 // output is already there and nothing is written), and done after it, with
-// whether the output is now in that state. Neither may block. Set during
-// boot, before Matter starts.
-typedef void (*shelly_local_toggle_hook_t)(bool turning_on);
-typedef void (*shelly_local_toggle_done_t)(bool accepted);
+// whether the output is now in that state. ch is the relay (0 = relay 1).
+// Neither may block. Set during boot, before Matter starts.
+typedef void (*shelly_local_toggle_hook_t)(int ch, bool turning_on);
+typedef void (*shelly_local_toggle_done_t)(int ch, bool accepted);
 void shelly_onoff_set_local_toggle_hook(shelly_local_toggle_hook_t hook, shelly_local_toggle_done_t done);
 
 // Set the OnOff attribute on the Matter thread, without waiting for the
@@ -208,6 +208,18 @@ bool shelly_maintenance_active(void);
 // Record the relay state before a restart out of maintenance mode into
 // normal mode (the Exit button, the 5 s hold, the idle timeout, an update).
 void shelly_maintenance_exit_record(void);
+// As shelly_maintenance_exit_record(), for a maintenance boot that failed to
+// start: not a clean exit, so a meter it started stays suspected and the
+// next maintenance boot leaves it off.
+void shelly_maintenance_failed_record(void);
+
+// Metered boards, in a maintenance boot, before starting the meter: false if
+// a maintenance boot that started it since power-on stopped without a clean
+// exit (a crash or a hang). Then leave the meter off this boot: Wi-Fi mode
+// must stay usable. True marks this boot as running it.
+bool shelly_maintenance_meter_allowed(void);
+// True if shelly_maintenance_meter_allowed() refused this boot.
+bool shelly_maintenance_meter_skipped(void);
 
 // Call in a normal boot once the relay's OnOff endpoint exists, before
 // esp_matter::start(). After a restart out of maintenance mode, it stores

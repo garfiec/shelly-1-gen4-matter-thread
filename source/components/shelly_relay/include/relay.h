@@ -52,11 +52,12 @@ extern "C" {
 //      low in this window, so the relay stays de-energized.
 //
 //   2. FAULTS: protection modules (thermal, electrical) register a
-//      gate with relay_register_gate(). While any gate refuses,
-//      relay_set(true) is refused. A fault that must open the relay
-//      calls relay_trip(), which drives the pin low under the same
-//      lock as the gate check, so an On that is already in flight
-//      cannot re-energize the relay after the trip.
+//      gate with relay_register_gate(). While any gate refuses a
+//      channel, relay_set_ch(ch, true) is refused. A fault that must
+//      open a relay calls relay_trip() (every relay) or relay_trip_ch()
+//      (one), which drives the pin low under the same lock as the gate
+//      check, so an On that is already in flight cannot re-energize the
+//      relay after the trip.
 //
 //   3. THREAD / NETWORK LOSS: the relay state is INTENTIONALLY held.
 //      Loss of Thread connectivity does not change physical state.
@@ -87,10 +88,11 @@ extern "C" {
 #define RELAY_CHANNELS 1
 #endif
 
-// A turn-on gate. Gates apply to every channel. Returns NULL to allow turn-on, or a short reason
-// string (for the log) to refuse it. Runs with the relay lock held, so
-// it must only read state; it must not block or call into Matter.
-typedef const char *(*relay_gate_fn_t)(void);
+// A turn-on gate, asked for the channel being turned on (0 = relay 1).
+// Returns NULL to allow turn-on, or a short reason string (for the log)
+// to refuse it. Runs with the relay lock held, so it must only read
+// state; it must not block or call into Matter.
+typedef const char *(*relay_gate_fn_t)(int ch);
 
 // Initialize the relay subsystem. Configures every relay GPIO as an
 // output, drives it LOW and releases any pad hold. Must be called once
@@ -125,6 +127,9 @@ esp_err_t relay_set_ch(int ch, bool power);
 // that takes the relay lock afterwards is refused. The caller then
 // updates the Matter OnOff attribute to Off, outside the relay lock.
 void relay_trip(void);
+
+// relay_trip() for one channel; the others keep their state.
+void relay_trip_ch(int ch);
 
 // The level last written to the relay pin (true = energized).
 bool relay_get(void);

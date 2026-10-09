@@ -104,6 +104,33 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 <dl id="hwlist"></dl>
 </section>
 
+<section id="meteroff" hidden>
+<h2>Power meter</h2>
+<p class="muted" style="margin:0">Off in Wi-Fi mode until the next power cycle: a Wi-Fi mode boot stopped unexpectedly while it ran. Overcurrent and overvoltage protection are off here too, so the relays started off; metering and protection still run in normal operation.</p>
+</section>
+
+<section id="metercard" hidden>
+<h2>Power meter</h2>
+<dl id="meterlist"></dl>
+<h2 style="margin:16px 0 6px">Calibrate</h2>
+<p class="muted" style="margin:0 0 8px">Optional: the meter comes calibrated. To match your own plug-in meter, run a steady load of at least 50 W through <span id="calwhich">the relay</span> (a heater, a kettle or an old-style bulb, not LED lights), wait a few seconds, and enter what your meter shows. Leave a box empty to keep that value as it is.</p>
+<div id="calchrow" class="buttons" hidden>
+<label class="check"><input type="radio" name="calch" value="1" checked> Relay 1</label>
+<label class="check"><input type="radio" name="calch" value="2"> Relay 2</label>
+</div>
+<label for="calv" class="muted">Volts</label>
+<input type="text" id="calv" inputmode="decimal" autocomplete="off" placeholder="117.4">
+<label for="cala" class="muted">Amps</label>
+<input type="text" id="cala" inputmode="decimal" autocomplete="off" placeholder="3.31">
+<label for="calw" class="muted">Watts</label>
+<input type="text" id="calw" inputmode="decimal" autocomplete="off" placeholder="389">
+<div class="buttons">
+<button id="calset">Calibrate</button>
+<button id="calreset">Back to the built-in calibration</button>
+</div>
+<div id="calmsg" class="msg"></div>
+</section>
+
 <section class="pending" id="pendingbox" hidden>
 <div><span id="pendingwhat"></span> <b id="pendingval"></b></div>
 <div>Press the device's button <b>3 times</b> to save it. Time left: <b id="pendingsecs"></b></div>
@@ -131,7 +158,7 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 <script>
 var $ = function (id) { return document.getElementById(id); };
 var busy = false;
-var waiting = null, swTouched = false, swTouched2 = false, hwPolls = 0;
+var waiting = null, swTouched = false, swTouched2 = false, hwPolls = 0, meterNow = null;
 var RESET_REASONS = { 1: 'power on', 3: 'software restart', 4: 'crash', 5: 'interrupt watchdog', 6: 'task watchdog', 7: 'watchdog', 9: 'brownout' };
 function onOff(a) { return (a || []).map(function (b) { return b ? 'on' : 'off'; }).join(' / '); }
 function hiLo(a) { return (a || []).map(function (b) { return b ? 'high' : 'low'; }).join(' / '); }
@@ -156,18 +183,23 @@ function hwRefresh() {
     hwRow(dl, 'Temperatures', 'board ' + temp(b.ntc_c) + ', chip ' + temp(b.die_c) + (b.overtemp ? ', OVER TEMPERATURE' : ''));
     var m = b.meter, r = m.regs || {};
     hwRow(dl, 'Power meter', m.state + (m.error ? ' (error ' + m.error + ')' : '') + (r['0x702'] ? ', version ' + r['0x702'] : ''));
-    if (r['0x31C']) {
-      // Estimates with ESPHome's scaling and the calibration measured on this board model.
-      var v = parseInt(r['0x31C'], 16) / 26000 * 0.9811;
-      var f = r['0x10E'] ? 223750 / (parseInt(r['0x10E'], 16) + 1) : 0;
-      var ia = r['0x31A'] ? parseInt(r['0x31A'], 16) / 100000 * 3.747 : 0;
-      var ib = r['0x31B'] ? parseInt(r['0x31B'], 16) / 100000 * 3.808 : 0;
-      var pa = r['0x312'] ? s32(r['0x312']) / 154 * -3.679 : 0;
-      var pb = r['0x313'] ? s32(r['0x313']) / 154 * -3.718 : 0;
-      hwRow(dl, 'Meter estimate', v.toFixed(1) + ' V, ' + f.toFixed(2) + ' Hz');
-      hwRow(dl, 'Channel 1 estimate', ia.toFixed(3) + ' A, ' + pa.toFixed(1) + ' W');
-      hwRow(dl, 'Channel 2 estimate', ib.toFixed(3) + ' A, ' + pb.toFixed(1) + ' W');
-    }
+    if (b.meter.live_reads !== undefined && r['0x31C']) hwRow(dl, 'Meter registers', 'read ' + b.meter.live_reads + ' times; live readings in Power meter');
+  }).catch(function () {});
+}
+function num(v, d, unit) { return v === null || v === undefined ? '–' : v.toFixed(d) + ' ' + unit; }
+function ratios(c, ch) { return 'voltage ×' + c.v.toFixed(4) + ', current ×' + c.i[ch].toFixed(4) + ', power ×' + c.p[ch].toFixed(4); }
+function meterRefresh(channels) {
+  fetch('/meter.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (m) {
+    meterNow = m;
+    var dl = $('meterlist'); dl.innerHTML = '';
+    if (!m.valid) { hwRow(dl, 'Reading', 'No reading from the meter'); return; }
+    hwRow(dl, 'Voltage', num(m.v, 1, 'V') + ', ' + num(m.hz, 2, 'Hz'));
+    m.ch.forEach(function (c, i) {
+      hwRow(dl, channels > 1 ? 'Relay ' + (i + 1) : 'Load', (c.on ? 'on' : 'off') + ', ' + num(c.a, 3, 'A') + ', ' + num(c.w, 1, 'W') + ', ' + (c.wh / 1000).toFixed(2) + ' kWh total');
+    });
+    var cal = m.cal.custom ? m.ch.map(function (c, i) { return (channels > 1 ? 'relay ' + (i + 1) + ': ' : '') + ratios(m.cal, i); }).join('; ') : 'built-in';
+    hwRow(dl, 'Calibration', cal);
+    hwRow(dl, 'Raw counts', 'V ' + m.raw_v + m.ch.map(function (c, i) { return ', I' + (i + 1) + ' ' + c.raw_i + ', P' + (i + 1) + ' ' + c.raw_p; }).join(''));
   }).catch(function () {});
 }
 var MODE_NAMES = { toggle: 'Toggle', push: 'Push button', follow: 'Follow', disabled: 'Disabled' };
@@ -190,6 +222,11 @@ function refresh() {
       if (r2) r2.checked = true;
     }
     $('hwcard').hidden = !s.hw_data;
+    $('metercard').hidden = !s.meter;
+    $('meteroff').hidden = !s.meter_skipped;
+    $('calchrow').hidden = !two;
+    $('calwhich').textContent = two ? 'the relay you choose' : 'the relay';
+    if (s.meter) meterRefresh(s.channels);
     // The snapshot changes every 10 s at most: no need to rebuild it on every poll.
     if (s.hw_data && (hwPolls++ % 5 === 0)) hwRefresh();
     $('code').textContent = s.code;
@@ -206,18 +243,26 @@ function refresh() {
     var p = s.pending;
     $('pendingbox').hidden = !p;
     if (p) {
-      var isCode = s.pending_kind === 'code';
+      var isCode = s.pending_kind === 'code', isCal = s.pending_kind === 'cal';
       $('pendingwhat').textContent = isCode ? 'New setup code' :
+        isCal ? (p === 'default' ? 'Back to the built-in meter calibration' :
+          'New meter calibration' + (s.channels > 1 ? ', measured on relay ' + s.pending_ch : '')) :
         (s.channels > 1 ? 'New wall switch ' + s.pending_ch + ' mode:' : 'New wall switch mode:');
-      $('pendingval').textContent = isCode ? p : (MODE_NAMES[p] || p);
+      $('pendingval').textContent = isCode ? p : isCal ? '' : (MODE_NAMES[p] || p);
       $('pendingnote').textContent = isCode ?
         'Nothing changes until you press. The new code applies once the device is back in normal operation.' :
+        isCal ? 'Nothing changes until you press. The new calibration applies at once.' :
         'Nothing changes until you press. The new mode applies at once.';
       $('pendingsecs').textContent = Math.floor(s.pending_secs / 60) + ':' + ('0' + s.pending_secs % 60).slice(-2);
-      waiting = { kind: s.pending_kind, value: p, ch: s.pending_ch };
+      waiting = { kind: s.pending_kind, value: p, ch: s.pending_ch, cal: meterNow ? JSON.stringify(meterNow.cal) : '' };
     } else if (waiting) {
       var w = waiting; waiting = null;
-      if (w.kind === 'code') {
+      if (w.kind === 'cal') {
+        fetch('/meter.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (m) {
+          if (JSON.stringify(m.cal) !== w.cal) msg($('calmsg'), m.cal.custom ? 'Saved: ' + ratios(m.cal, w.ch - 1) + '.' : 'Saved: back to the built-in calibration.', 'good');
+          else msg($('calmsg'), 'The calibration was not saved.', 'bad');
+        }).catch(function () {});
+      } else if (w.kind === 'code') {
         if (s.code === w.value) msg($('codemsg'), 'Saved. Pair with ' + s.code + ' once you exit.', 'good');
         else msg($('codemsg'), 'The change was not saved. The code is still ' + s.code + '.', 'bad');
       } else {
@@ -259,8 +304,16 @@ $('setswitch2').onclick = function () {
   var r = document.querySelector('input[name=swmode2]:checked');
   if (r) post('/switch/mode', '2:' + r.value, $('switchmsg2'));
 };
+$('calset').onclick = function () {
+  var r = document.querySelector('input[name=calch]:checked');
+  var ch = $('calchrow').hidden || !r ? '1' : r.value;
+  var f = function (id) { return encodeURIComponent($(id).value.trim().replace(',', '.')); };
+  post('/cal', 'ch=' + ch + '&v=' + f('calv') + '&a=' + f('cala') + '&w=' + f('calw'), $('calmsg'));
+};
+$('calreset').onclick = function () { post('/cal/reset', '', $('calmsg')); };
 $('cancelchange').onclick = function () {
-  var out = waiting && waiting.kind === 'switch' ? (waiting.ch === 2 ? $('switchmsg2') : $('switchmsg')) : $('codemsg');
+  var out = waiting && waiting.kind === 'switch' ? (waiting.ch === 2 ? $('switchmsg2') : $('switchmsg')) :
+    waiting && waiting.kind === 'cal' ? $('calmsg') : $('codemsg');
   waiting = null; swTouched = false; swTouched2 = false; post('/change/cancel', '', out);
 };
 $('diagclear').onclick = function (e) {

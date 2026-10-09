@@ -64,8 +64,8 @@ source/
 ├── shelly-1pm-gen4/
 │   └── outlet/          # Matter On/Off Plug-in Unit + Electrical Sensor, power metering and protection (experimental)
 └── shelly-2pm-gen4/
-    ├── outlet/          # Two Matter On/Off Plug-in Units, bring-up build without metering (experimental)
-    └── light/           # Two Matter On/Off Lights, bring-up build without metering (experimental)
+    ├── outlet/          # Two Matter On/Off Plug-in Units with metering per relay (experimental)
+    └── light/           # Two Matter On/Off Lights with metering per relay (experimental)
 ```
 
 Each variant is a self-contained ESP-IDF project that also pulls in the shared components from `source/components/`. A variant's pins and board options live in the "Shelly board" menu of its `main/Kconfig.projbuild`. Build commands run from inside the variant directory.
@@ -76,7 +76,8 @@ The pure logic in the shared components has host tests that need only a C compil
 - the LED patterns;
 - Wi-Fi maintenance mode's upload check and captive-portal DNS;
 - the Matter setup code: the 11-digit manual code, its check digit and the saved record;
-- the diagnostics log ring, the hardware snapshot's storage and text forms, and the ADE7953 probe's register table (it must never list a register whose read changes the chip). The script also fails if the probe contains an I2C write.
+- the diagnostics log ring, the hardware snapshot's storage and text forms, and the ADE7953 register table (it must never list a register whose read changes the chip);
+- the ADE7953 codec (its scaling against the 2PM's measured runs, and the only two writes the driver may send), the meter calibration logic, and the metering helpers it uses. The script also fails if the ADE7953 driver writes the chip anywhere but its one guarded write function.
 
 ```bash
 source/components/test_host/run.sh
@@ -104,9 +105,9 @@ Install its `build_diag/outlet.bin`, packaged as an `.ota`, from the Wi-Fi mode 
 
 ### Board bring-up data
 
-For a board that isn't verified yet, `CONFIG_SHELLY_HW_SNAPSHOT` ("Shelly hardware snapshot" menu) and `CONFIG_SHELLY_ADE7953_PROBE` ("Shelly ADE7953 probe" menu) record what the hardware reads, for the Wi-Fi mode page. Both are off by default and on in the Shelly 2PM Gen4 builds, together with the diagnostics log:
+For a board that isn't verified yet, `CONFIG_SHELLY_HW_SNAPSHOT` ("Shelly hardware snapshot" menu) records what the hardware reads, for the Wi-Fi mode page. It is off by default and on in the Shelly 2PM Gen4 builds, together with the diagnostics log:
 - **The snapshot**, every 10 s of a normal run: each relay as written and as its pin reads back (`CONFIG_SHELLY_RELAY_READBACK`), each wall switch pin and how many edges it saw, the button pin, the NTC's ADC reading and temperature, the die temperature and the heap. A line a minute also goes to the diagnostics log. It lives in memory that survives the restart into Wi-Fi mode (about 450 bytes); a power cut clears it.
-- **The ADE7953 probe**, from 30 s after Matter starts: one read of the meter chip's identity, configuration, gains, interrupt registers and measurements, then the measurements every minute. It never writes a register and never reads one whose read resets it, its I2C operations time out after 50 ms, and a crash while it talks to the chip turns it off until the next power cycle.
+- **The ADE7953's registers**, on a board with that meter: the meter driver copies the chip's identity, configuration, gains, interrupt registers and measurements into the snapshot once a normal run's snapshot has started, then the measurements every minute. It never reads a register whose read resets it. (The 1.0.0 bring-up build had a separate read-only probe for this.)
 - **On the page:** the Hardware data card, and the raw `/hw.json`.
 
 Wi-Fi maintenance mode is on by default (`CONFIG_SHELLY_MAINTENANCE`, in the "Shelly Wi-Fi maintenance mode" menu). The Wi-Fi driver's static data costs about 24 KB of RAM in normal operation, where Wi-Fi never runs. Turning the option off gives that back, and the 5 s hold is then refused.

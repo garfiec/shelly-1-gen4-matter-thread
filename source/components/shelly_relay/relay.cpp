@@ -29,7 +29,8 @@
 //   - relay_init() drives the GPIO LOW immediately after configuring it
 //     as output, and before releasing the pad hold. Do not reorder.
 //   - relay_set(true) is gated by every registered gate. Do not bypass.
-//   - relay_set(false) and relay_trip() are always allowed. Do not gate them.
+//   - relay_set(false), relay_trip() and relay_trip_ch() are always allowed.
+//     Do not gate them.
 
 #ifndef CONFIG_SHELLY_RELAY_GPIO
 #error "CONFIG_SHELLY_RELAY_GPIO must be declared in the variant's Kconfig.projbuild"
@@ -128,7 +129,7 @@ static esp_err_t relay_write_locked(int ch, bool power)
         // SAFETY: Refuse turn-on while any gate refuses. Turn-off is
         // always allowed. The safe direction is never blocked.
         for (int i = 0; i < s_gate_count; i++) {
-            const char *reason = s_gates[i]();
+            const char *reason = s_gates[i](ch);
             if (reason != nullptr) {
                 ESP_LOGW(TAG, "Relay turn-on blocked: %s", reason);
                 return ESP_ERR_INVALID_STATE;
@@ -181,6 +182,18 @@ void relay_trip(void)
     xSemaphoreGive(s_lock);
     // Logged after the pins are low: a busy console must not delay the trip.
     ESP_LOGW(TAG, "Relay tripped");
+}
+
+void relay_trip_ch(int ch)
+{
+    if (s_lock == nullptr || ch < 0 || ch >= RELAY_CHANNELS) {
+        return;
+    }
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    gpio_set_level(s_pins[ch], 0);
+    s_level[ch] = false;
+    xSemaphoreGive(s_lock);
+    ESP_LOGW(TAG, "Relay %d tripped", ch + 1);
 }
 
 bool relay_get_ch(int ch)

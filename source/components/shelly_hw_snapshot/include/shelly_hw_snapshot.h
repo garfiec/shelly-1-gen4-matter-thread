@@ -19,7 +19,7 @@
 // Optional hardware snapshot (CONFIG_SHELLY_HW_SNAPSHOT, off by default; on
 // for boards being brought up, like the 2PM). During a normal boot it
 // samples the relay and input pins, the button, the temperature sensors,
-// the heap and what the power-meter probe read, into memory that survives
+// the heap and what the power meter's registers read, into memory that survives
 // the restart into Wi-Fi mode, where the page shows it (/hw.json). A line a
 // minute also goes to the diagnostics log. A power cut clears it.
 //
@@ -43,16 +43,16 @@ extern "C" {
 
 // Normal boot, after shelly_app_started(): take over the snapshot from the
 // previous boot and start sampling every 10 s. After a crash restart (panic
-// or watchdog) it starts nothing and keeps the crashed boot's snapshot, and
-// the meter probe stays off: neither can turn a crash into a crash loop.
+// or watchdog) it starts nothing and keeps the crashed boot's snapshot, so
+// it can never turn a crash into a crash loop.
 void shelly_hw_snapshot_start(void);
 
-// For the power-meter probe (normal boot only).
-// True if the probe must not run: this boot follows a crash restart, or a
-// crash since power-on happened while the probe talked to the chip.
-bool shelly_hw_snapshot_ade_blocked(void);
-// Set or clear the guard that marks the probe as talking to the chip.
-void shelly_hw_snapshot_ade_guard(bool on);
+// True once shelly_hw_snapshot_start() has started this normal boot's
+// snapshot. The ade_* setters below do nothing until then (and in Wi-Fi
+// mode, where the snapshot is the last normal boot's).
+bool shelly_hw_snapshot_active(void);
+
+// For the power meter (normal boot only).
 void shelly_hw_snapshot_ade_state(hw_ade_state_t state, int32_t err);
 void shelly_hw_snapshot_ade_reg(uint16_t addr, uint8_t width, bool ok, uint32_t value);
 // The full dump finished (dump true) or another live read did.

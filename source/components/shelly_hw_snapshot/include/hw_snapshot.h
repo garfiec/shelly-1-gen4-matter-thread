@@ -36,15 +36,15 @@ extern "C" {
 #define HW_SNAP_CHANNELS 2
 #define HW_SNAP_REGS     40
 
-// What the power-meter probe got to.
+// What the power meter's register reads got to.
 typedef enum {
-    HW_ADE_NOT_RUN = 0,     // Not started yet (it waits after Matter starts)
+    HW_ADE_NOT_RUN = 0,     // Not read yet this boot
     HW_ADE_RUNNING,         // Reading
     HW_ADE_NO_ANSWER,       // Nothing answered at the chip's address
     HW_ADE_BUS_ERROR,       // The I2C bus could not be set up
     HW_ADE_READ_ERRORS,     // Stopped after reads failed in a row
-    HW_ADE_DONE,            // Dump complete; live values every minute
-    HW_ADE_SKIPPED_CRASH,   // Not run: the last boot crashed while probing
+    HW_ADE_DONE,            // Registers read; measurements every minute
+    HW_ADE_SKIPPED_CRASH,   // (Bring-up builds) not run after a crash while probing
     HW_ADE_STATE_COUNT,
 } hw_ade_state_t;
 
@@ -84,7 +84,7 @@ typedef struct {
     uint8_t overtemp;
     uint8_t no_sensor;
     uint8_t ade_state;          // hw_ade_state_t
-    uint8_t ade_guard;          // Set while the probe talks to the chip
+    uint8_t ade_guard;          // (Bring-up builds) set while the probe talked to the chip
     uint8_t ade_count;          // Valid entries in ade[]
     int32_t ade_err;            // Last I2C error (esp_err_t), 0 if none
     uint32_t ade_dump_s;        // Uptime of the full dump

@@ -81,7 +81,7 @@ Once the image is loaded, the update is available in two places. Use whichever y
 2. The device downloads over Thread, writes its inactive slot, verifies, and reboots into the new firmware. If the update does not appear right away, the device queries on its own timer; power-cycling it prompts an immediate check.
 3. The device comes back reporting the new version, and the server then offers nothing further. A download that fails verification is never booted, and the device keeps running its current firmware.
 
-> **Automatic rollback.** From the releases that include it (Shelly 1 Gen4 Light, Outlet and Opener 2.2.0, Light Switch 2.3.0, Shelly 1 Mini Gen4 Outlet 1.1.0, Shelly 1PM Gen4 Outlet 1.0.0), a newly installed image has to prove itself: it confirms itself after running for 60 seconds with the Matter stack responsive. If it crashes, hangs or restarts before then, the device boots the previous firmware again. Two conditions apply:
+> **Automatic rollback.** From the releases that include it (Shelly 1 Gen4 Light, Outlet and Opener 2.2.0, Light Switch 2.3.0, Shelly 1 Mini Gen4 Outlet 1.1.0, Shelly 1PM Gen4 Outlet 1.0.0, Shelly 2PM Gen4 Outlet and Light 1.0.0), a newly installed image has to prove itself: it confirms itself after running for 60 seconds with the Matter stack responsive. If it crashes, hangs or restarts before then, the device boots the previous firmware again. Two conditions apply:
 >
 > - The device's **bootloader** must support rollback. Only a web UI or UART install writes the bootloader; a Matter OTA never replaces it. A device that has only ever been updated over Matter OTA from an older release keeps its old bootloader, and gets rollback the next time it is installed over the web UI or UART.
 > - The update **from** an older release to one of these is not protected: the older firmware does not mark the new image as on trial.
@@ -152,6 +152,8 @@ The network is open, so anyone nearby can read the code while the mode is on. Ch
 ### Wall switch mode
 
 On the Light, Outlet, Mini, 1PM and 2PM, the page also sets what the wall switch wired to SW does (on the 2PM, SW1 and SW2 each have their own setting, for relay 1 and relay 2): **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position) or **Disabled**. Choose one, press **Save**, then press the device's button 3 times within 2 minutes, as for the setup code. The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
+
+On the 1PM and 2PM, the **Power meter** card shows the meter's live readings (each relay's on the 2PM) and can calibrate the meter against your own plug-in meter, saved the same way with 3 presses. See [Calibrating the meter](PROTECTION.md#calibrating-the-meter).
 
 ---
 

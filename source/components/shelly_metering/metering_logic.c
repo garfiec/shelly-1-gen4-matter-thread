@@ -115,3 +115,74 @@ bool report_changed(float last, float now, float abs_step, float rel_step)
     float step = fmaxf(abs_step, fabsf(last) * rel_step);
     return fabsf(now - last) >= step;
 }
+
+void noload_cut(float *amps, float *watts, float min_w, float max_noise_a)
+{
+    if (fabsf(*watts) < min_w && *amps < max_noise_a) {
+        *amps = 0.0f;
+        *watts = 0.0f;
+    }
+}
+
+double power_to_mwh(float watts, int64_t dt_ms, int64_t max_dt_ms)
+{
+    if (dt_ms <= 0 || !(watts > 0.0f)) {
+        return 0.0;
+    }
+    if (dt_ms > max_dt_ms) {
+        dt_ms = max_dt_ms;
+    }
+    return (double)watts * (double)dt_ms / 3600.0;
+}
+
+void avg_window_init(avg_window_t *w, int size)
+{
+    w->size = size < 1 ? 1 : (size > AVG_WINDOW_MAX ? AVG_WINDOW_MAX : size);
+    w->count = 0;
+    w->next = 0;
+}
+
+void avg_window_push(avg_window_t *w, float x)
+{
+    if (!isfinite(x)) {
+        w->count = 0;
+        w->next = 0;
+        return;
+    }
+    w->v[w->next] = x;
+    w->next = (w->next + 1) % w->size;
+    if (w->count < w->size) {
+        w->count++;
+    }
+}
+
+bool avg_window_full(const avg_window_t *w)
+{
+    return w->count == w->size;
+}
+
+float avg_window_mean(const avg_window_t *w)
+{
+    if (w->count == 0) {
+        return NAN;
+    }
+    double sum = 0.0;
+    for (int i = 0; i < w->count; i++) {
+        sum += w->v[i];
+    }
+    return (float)(sum / w->count);
+}
+
+float avg_window_spread(const avg_window_t *w)
+{
+    float mean = avg_window_mean(w);
+    if (!(mean > 0.0f)) {
+        return INFINITY;
+    }
+    float lo = w->v[0], hi = w->v[0];
+    for (int i = 1; i < w->count; i++) {
+        lo = fminf(lo, w->v[i]);
+        hi = fmaxf(hi, w->v[i]);
+    }
+    return (hi - lo) / mean;
+}

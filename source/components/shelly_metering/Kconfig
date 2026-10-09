@@ -1,0 +1,11 @@
+menu "Shelly metering"
+
+    config SHELLY_HAS_METER
+        bool
+        default n
+        help
+            Set (selected) by a board's meter option, SHELLY_HAS_BL0942 or
+            SHELLY_HAS_ADE7953: builds the metering, electrical protection
+            and calibration code.
+
+endmenu

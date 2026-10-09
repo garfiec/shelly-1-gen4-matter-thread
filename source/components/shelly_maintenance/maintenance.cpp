@@ -45,7 +45,11 @@
 #include <lwip/sockets.h>
 #include <sdkconfig.h>
 
+#include <math.h>
+
+#include <metering_live.h>
 #include <relay.h>
+#include <shelly_calibration.h>
 #include <shelly_hw_desc.h>
 #include <shelly_hw_snapshot.h>
 #include <shelly_diag_log.h>
@@ -97,7 +101,8 @@ static void touch(void)
     s_last_activity_ms = uptime_ms();
 }
 
-// Every way out of the mode into normal operation: the normal boot keeps
+// Every clean way out of the mode into normal operation (a failed start
+// uses shelly_maintenance_failed_record() instead): the normal boot keeps
 // the relay's state here as its previous state (see shelly_app.h).
 [[noreturn]] static void restart_to_normal(void)
 {
@@ -302,13 +307,17 @@ static esp_err_t status_get(httpd_req_t *req)
             setup_code_manual_format(change.code.passcode, change.code.discriminator, t);
             snprintf(pending, sizeof(pending), "\"%s\"", t);
             pending_kind = "\"code\"";
+        } else if (change.kind == SHELLY_CHANGE_CALIBRATION) {
+            snprintf(pending, sizeof(pending), "\"%s\"", cal_ratios_is_default(&change.cal) ? "default" : "new");
+            pending_kind = "\"cal\"";
         } else {
             snprintf(pending, sizeof(pending), "\"%s\"", ui_switch_mode_name(change.switch_mode));
             pending_kind = "\"switch\"";
         }
     }
     bool has_modes = shelly_ui_switch_role() == UI_SWITCH_TOGGLE;
-    unsigned pending_ch = strcmp(pending_kind, "\"switch\"") == 0 ? change.channel + 1u : 0u;
+    bool channel_kind = strcmp(pending_kind, "\"switch\"") == 0 || strcmp(pending_kind, "\"cal\"") == 0;
+    unsigned pending_ch = channel_kind ? change.channel + 1u : 0u;
 
     char body[768];
     int n = snprintf(body, sizeof(body),
@@ -316,13 +325,15 @@ static esp_err_t status_get(httpd_req_t *req)
                      "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,"
                      "\"switch_modes\":%s,\"switch_mode\":\"%s\","
                      "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u,\"diag\":%s,"
-                     "\"channels\":%d,\"relay2\":%s,\"switch_mode2\":\"%s\",\"pending_ch\":%u,\"hw_data\":%s}",
+                     "\"channels\":%d,\"relay2\":%s,\"switch_mode2\":\"%s\",\"pending_ch\":%u,\"hw_data\":%s,"
+                     "\"meter\":%s,\"meter_skipped\":%s}",
                      shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text,
                      source, created ? "true" : "false", has_modes ? "true" : "false",
                      ui_switch_mode_name(shelly_switch_mode_get()), pending_kind, pending, (unsigned)secs_left,
                      shelly_diag_log_available() ? "true" : "false", RELAY_CHANNELS,
                      relay_get_ch(1) ? "true" : "false", ui_switch_mode_name(shelly_switch_mode_get_ch(1)),
-                     pending_ch, HW_DATA_BUILT ? "true" : "false");
+                     pending_ch, HW_DATA_BUILT ? "true" : "false", shelly_cal_available() ? "true" : "false",
+                     shelly_maintenance_meter_skipped() ? "true" : "false");
     if (n < 0 || n >= (int)sizeof(body)) {
         return send_result(req, "500 Internal Server Error", false, "Status too long");
     }
@@ -515,6 +526,106 @@ static esp_err_t hw_get(httpd_req_t *req)
 }
 #endif
 
+#if CONFIG_SHELLY_HAS_METER
+// A number for JSON: null for NAN.
+static void json_num(char *buf, size_t len, float v, int decimals)
+{
+    if (!isfinite(v)) {
+        snprintf(buf, len, "null");
+    } else {
+        snprintf(buf, len, "%.*f", decimals, (double)v);
+    }
+}
+
+// GET /meter.json: the meter's live readings and the calibration in use.
+static esp_err_t meter_get(httpd_req_t *req)
+{
+    touch();
+    metering_live_t m;
+    if (!metering_live(&m)) {
+        return send_result(req, "404 Not Found", false, "This device has no meter");
+    }
+    char v[16], hz[16];
+    json_num(v, sizeof(v), m.volts, 2);
+    json_num(hz, sizeof(hz), m.hz, 2);
+    char body[640];
+    int n = snprintf(body, sizeof(body),
+                     "{\"chip\":\"%s\",\"valid\":%s,\"steady\":%s,\"v\":%s,\"hz\":%s,\"raw_v\":%lld,"
+                     "\"cal\":{\"v\":%.4f,\"i\":[%.4f,%.4f],\"p\":[%.4f,%.4f],\"custom\":%s},\"ch\":[",
+                     m.chip, m.valid ? "true" : "false", m.steady_ready ? "true" : "false", v, hz,
+                     (long long)m.raw_v, (double)m.ratios.q[CAL_Q_V], (double)m.ratios.q[CAL_Q_I0],
+                     (double)m.ratios.q[CAL_Q_I1], (double)m.ratios.q[CAL_Q_P0], (double)m.ratios.q[CAL_Q_P1],
+                     cal_ratios_is_default(&m.ratios) ? "false" : "true");
+    for (int ch = 0; ch < m.channels && n > 0 && n < (int)sizeof(body); ch++) {
+        char a[16], w[16];
+        json_num(a, sizeof(a), m.amps[ch], 3);
+        json_num(w, sizeof(w), m.watts[ch], 1);
+        n += snprintf(body + n, sizeof(body) - n,
+                      "%s{\"on\":%s,\"a\":%s,\"w\":%s,\"wh\":%.1f,\"raw_i\":%lld,\"raw_p\":%lld}",
+                      ch ? "," : "", m.relay_on[ch] ? "true" : "false", a, w, (double)m.energy_mwh[ch] / 1000.0,
+                      (long long)m.raw_i[ch], (long long)m.raw_p[ch]);
+    }
+    if (n > 0 && n < (int)sizeof(body)) {
+        n += snprintf(body + n, sizeof(body) - n, "]}");
+    }
+    if (n < 0 || n >= (int)sizeof(body)) {
+        return send_result(req, "500 Internal Server Error", false, "Readings too long");
+    }
+    return send_json(req, "200 OK", body);
+}
+
+// POST /cal: "ch=1&v=117.4&a=3.31&w=389", what a reference meter reads on
+// the load running through that relay now. The correction is worked out
+// from the device's last 5 s of readings and waits for 3 presses of the
+// button, like a setup code (B-26).
+static esp_err_t cal_post(httpd_req_t *req)
+{
+    touch();
+    char text[96];
+    esp_err_t reply = ESP_OK;
+    if (!read_small_body(req, text, sizeof(text), &reply)) {
+        return reply;
+    }
+    int ch = -1;
+    cal_values_t ref;
+    if (!cal_parse_form(text, &ch, &ref)) {
+        return send_result(req, "400 Bad Request", false, cal_result_message(CAL_ERR_INPUT));
+    }
+    cal_values_t mean, spread;
+    if (!metering_cal_measure(ch, &mean, &spread)) {
+        return send_result(req, "400 Bad Request", false, cal_result_message(CAL_ERR_CHANNEL));
+    }
+    // Steady: each quantity being calibrated varied by at most CAL_MAX_SPREAD.
+    bool stable = (isnan(ref.volts) || spread.volts <= CAL_MAX_SPREAD) &&
+                  (isnan(ref.amps) || spread.amps <= CAL_MAX_SPREAD) &&
+                  (isnan(ref.watts) || spread.watts <= CAL_MAX_SPREAD);
+    cal_ratios_t cur, out;
+    shelly_cal_get(&cur);
+    cal_result_t r = cal_compute(&cur, RELAY_CHANNELS, ch, &mean, stable, &ref, &out);
+    if (r != CAL_OK) {
+        return send_result(req, "400 Bad Request", false, cal_result_message(r));
+    }
+    if (!shelly_cal_stage(ch, &out)) {
+        return send_result(req, "400 Bad Request", false, cal_result_message(CAL_ERR_RANGE));
+    }
+    ESP_LOGI(TAG, "Calibration staged for relay %d: V x%.4f, I x%.4f, P x%.4f", ch + 1, out.q[CAL_Q_V],
+             out.q[CAL_Q_I(ch)], out.q[CAL_Q_P(ch)]);
+    return send_result(req, "200 OK", true, "");
+}
+
+// POST /cal/reset: back to the built-in calibration, after 3 presses.
+static esp_err_t cal_reset_post(httpd_req_t *req)
+{
+    touch();
+    cal_ratios_t def;
+    cal_ratios_default(&def);
+    if (!shelly_cal_stage(0, &def)) {
+        return send_result(req, "400 Bad Request", false, "This device has no meter");
+    }
+    return send_result(req, "200 OK", true, "");
+}
+#endif
+
 static esp_err_t change_cancel_post(httpd_req_t *req)
 {
     touch();
@@ -701,7 +812,13 @@ static esp_err_t start_http(void)
 #if CONFIG_SHELLY_HW_SNAPSHOT
         {.uri = "/hw.json", .method = HTTP_GET, .handler = hw_get, .user_ctx = nullptr},
 #endif
+#if CONFIG_SHELLY_HAS_METER
+        {.uri = "/meter.json", .method = HTTP_GET, .handler = meter_get, .user_ctx = nullptr},
+        {.uri = "/cal", .method = HTTP_POST, .handler = cal_post, .user_ctx = nullptr},
+        {.uri = "/cal/reset", .method = HTTP_POST, .handler = cal_reset_post, .user_ctx = nullptr},
+#endif
     };
+    static_assert(sizeof(uris) / sizeof(uris[0]) <= 16, "raise max_uri_handlers");
     for (const httpd_uri_t &uri : uris) {
         err = httpd_register_uri_handler(server, &uri);
         if (err != ESP_OK) {
@@ -751,7 +868,10 @@ static void run(uint32_t relays_on)
         ESP_LOGE(TAG, "Maintenance mode failed to start (%s); restarting normally", esp_err_to_name(err));
         status_led_flash_refused();
         vTaskDelay(pdMS_TO_TICKS(2000));
-        restart_to_normal();
+        // Not a clean exit: if the meter took the memory Wi-Fi needed, the
+        // next attempt runs without it (shelly_maintenance_meter_allowed()).
+        shelly_maintenance_failed_record();
+        esp_restart();
     }
     if (xTaskCreate(dns_task, "maint_dns", DNS_STACK_SIZE, nullptr, 4, nullptr) != pdPASS) {
         // The page still works at 192.168.33.1; only the automatic popup is lost.

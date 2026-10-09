@@ -48,7 +48,7 @@ Once the firmware is up and running, updates are applied through Home Assistant 
 
 Tested on several Shelly 1 Gen4s and Shelly 1 Mini Gen4s, all hardware revision **v0.1.2** (printed on the PCB). Other revisions should work but have not been verified. If you have a different revision, please [open an issue](../../../issues/new) with your findings.
 
-The Shelly 1PM Gen4 firmware is **experimental and not yet verified on hardware**. Work through the [checklist](#shelly-1pm-gen4-checklist) below before flashing one. The same goes for the Shelly 2PM Gen4 bring-up builds: see the [2PM checklist](#shelly-2pm-gen4-checklist).
+The Shelly 1PM Gen4 firmware is **experimental and not yet verified on hardware**. Work through the [checklist](#shelly-1pm-gen4-checklist) below before flashing one. The Shelly 2PM Gen4 builds are experimental too: see the [2PM checklist](#shelly-2pm-gen4-checklist).
 
 ---
 
@@ -68,16 +68,17 @@ The 1PM firmware switches a metered 15 A load and has not run on hardware yet. I
 
 ## Shelly 2PM Gen4 checklist
 
-The first 2PM builds (Outlet and Light) switch two channels and have **no power metering and no overcurrent or overvoltage protection**: only over-temperature. Rely on the circuit breaker. They exist to bring the board up: they record what the hardware reads and show it on the Wi-Fi mode page, for the metering build that follows. Nothing about them has run on a 2PM yet.
+The 2PM builds (Outlet and Light) switch two channels. The 1.0.0 bring-up build ran on one 2PM (see the [Changelog](../CHANGELOG.md#shelly-2pm-gen4-outlet-and-light)) and had over-temperature protection only. 1.0.1 adds power metering and electrical protection per relay ([Protection and Metering](PROTECTION.md)); it has not run on hardware yet, so keep relying on the circuit breaker.
 
 1. **Hardware code.** Stock's `http://<device-ip>/rpc/Shelly.GetDeviceInfo` must report `"app":"S2PMG4"`. The package is built for that code; the web UI refuses it on anything else.
 2. **Slot.** The same call must report `"slot":1`. Install any stock update first if it reports 0 (see [Flash with the Shelly web UI](#flash-with-the-shelly-web-ui)). A web UI install from stock 2.0.1 has worked on a 1PM Gen4.
 3. **Partition layout (an assumption).** The package writes the stock Gen4 layout taken from the 1 Gen4, 1PM and Mini. It has not been read from a 2PM's flash; the 2PM uses the same module and its stock firmware reports the same 896 KB file system. A UART backup first is the only way to keep the option to go back to stock.
-4. **No rollback on the first install.** A web UI install from stock can't fall back if the new firmware fails to start. The hardware snapshot and the power-meter probe start only after Matter is up (the probe 30 s later, read only, with timeouts), and after any crash restart neither runs, so they can't cause a crash loop. The two-relay and two-input code itself runs from the start, as on every variant.
+4. **No rollback on the first install.** A web UI install from stock can't fall back if the new firmware fails to start. The meter driver runs from the start, like the relays and inputs: every I2C operation times out after 50 ms, and a meter that doesn't answer only raises the meter-lost alert. The hardware snapshot starts after Matter is up and skips the boot after a crash restart. Later updates from the Wi-Fi mode page roll back on their own if the new firmware fails in its first 60 s.
 5. **Two separate loads, never a motor.** These are switch builds: each output is its own on/off switch, and nothing stops both being on at once. Don't install them on a 2PM wired to a roller shutter, blind or other motor with an up and a down wire (stock's "cover" profile): both directions on together can damage the motor. A cover build comes later.
 6. **Prove the way back before pairing.** After the install and a power cycle, hold the button 5 s: the LED must show the Wi-Fi mode double blink (LED-08) and the `Shelly-S2PMG4-…` network must appear. Only then pair. Wi-Fi mode is how you install the next build.
 7. **Check both channels.** On the Wi-Fi mode page, toggle relay 1 and relay 2, flip SW1 and SW2, and open the Hardware data card: each relay's pin should follow it, each switch should move its own pin, and the board temperature should be close to stock's (about 40 °C at idle).
-8. **Collect the meter data.** Leave it in normal operation for at least 2 minutes with a known load on each channel, then enter Wi-Fi mode: the Hardware data card shows the power meter's readings, and `/hw.json` and the Diagnostics log have the raw values.
+8. **Check the meter.** With a steady resistive load through a plug-in meter on each relay in turn, the Power meter card on the Wi-Fi mode page should read within a few percent of your meter. If it doesn't, [calibrate it](PROTECTION.md#calibrating-the-meter) on the same card.
+9. **Install the metering build before pairing.** 1.0.1 adds the meter to each relay's endpoint. A device paired on 1.0.0 keeps its pairing through the update, but Home Assistant may need to re-interview it before the meter entities appear; installing 1.0.1 first avoids that.
 
 ---
 

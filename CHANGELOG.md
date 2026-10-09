@@ -228,6 +228,17 @@ The Light Switch variant on the Shelly 1 Mini Gen4, at parity with the 1 Gen4 Li
 
 ## Shelly 1PM Gen4 Outlet
 
+### [1.0.2] - Unreleased
+
+Meter calibration from the Wi-Fi mode page. **Experimental: built and unit-tested, not yet run on hardware.** Updates over Matter OTA or from the Wi-Fi mode page, keeping the pairing.
+
+#### Added
+- The meter on the Wi-Fi mode page: live readings, and calibration against your own plug-in meter, saved with 3 presses of the button (B-26), kept through updates and factory resets, and bounded to 15% of the built-in calibration. See [Calibrating the meter](docs/PROTECTION.md#calibrating-the-meter).
+
+#### Changed
+- Electrical protection, the relay layer and metering are shared with the two-relay Shelly 2PM Gen4 and work per relay. The 1PM's protection behaves as before.
+- If a Wi-Fi mode boot stops unexpectedly or fails to start while the meter runs, later Wi-Fi mode boots leave the meter off until the next power cycle, so a meter fault can't stop you installing a fix. Overcurrent and overvoltage protection are off in those Wi-Fi mode boots, so the relays start off there.
+
 ### [1.0.1] - Unreleased
 
 First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: built and unit-tested, not yet verified on hardware.** See the [1PM checklist](docs/FLASHING.md#shelly-1pm-gen4-checklist) before flashing.
@@ -258,9 +269,22 @@ Full release notes, including tested scenarios, are on the [GitHub releases page
 
 ## Shelly 2PM Gen4 Outlet and Light
 
-### [1.0.0] - Unreleased
+### [1.0.1] - Unreleased
 
-First builds for the Shelly 2PM Gen4. **Experimental bring-up builds: built and unit-tested, not yet run on hardware.** See the [2PM checklist](docs/FLASHING.md#shelly-2pm-gen4-checklist) before installing.
+Power metering and electrical protection, and meter calibration from the Wi-Fi mode page. **Experimental: built and unit-tested, not yet run on hardware.** Updates a 1.0.0 device from the Wi-Fi mode page, or over Matter OTA without re-pairing (Home Assistant may need to re-interview the device to show the new meter entities).
+
+#### Added
+- Power metering per relay with the ADE7953: power, voltage, current, frequency and imported energy on each relay's endpoint (the Matter Electrical Sensor device type), as on the 1PM. The calibration was measured on one 2PM against a plug-in meter with a 389 W heater on each relay. Energy is added up from the power readings, and an idle relay reads 0 instead of the meter's noise. See [Power metering](docs/PROTECTION.md#power-metering).
+- Electrical protection per relay: an overcurrent heat model scaled to Shelly's 10 A per relay (nothing below 11 A, 54 s at 12 A, 12 s at 15 A), latched per relay; a second model on the two relays' sum, scaled to the 16 A device rating, that turns both relays off; overvoltage; and welded-relay and meter-lost alerts. See [Protection and Metering](docs/PROTECTION.md).
+- The meter on the Wi-Fi mode page: live readings of each relay, and calibration against your own plug-in meter, saved with 3 presses of the button (B-26), kept through updates and factory resets, and bounded to 15% of the built-in calibration. The 1PM has the same page. See [Calibrating the meter](docs/PROTECTION.md#calibrating-the-meter). If a Wi-Fi mode boot stops unexpectedly or fails to start while the meter runs, later Wi-Fi mode boots leave the meter off until the next power cycle, so a meter fault can't stop you installing a fix. Overcurrent and overvoltage protection are off in those Wi-Fi mode boots, so the relays start off there.
+
+#### Changed
+- The meter chip is set up as its datasheet asks after every reset (register 0x120); the firmware writes nothing else to it. The read-only probe of 1.0.0 is gone: the meter driver feeds the hardware snapshot instead.
+- Electrical protection and the relay layer work per relay, shared with the 1PM, whose behaviour is unchanged.
+
+### [1.0.0] - 2026-10-08
+
+First builds for the Shelly 2PM Gen4. **Experimental bring-up builds.** Installed on one 2PM Gen4 (S4SW-002P16EU) from stock 2.0.1 with the web UI: Wi-Fi mode, the button (active low), both relays (their pins read back as written), both switch inputs, the NTC (about 34 °C at idle) and the ADE7953 (version 0x01 at 0x38; channel A measures relay 1, channel B relay 2) all worked, and the meter data calibrated the 1.0.1 build. See the [2PM checklist](docs/FLASHING.md#shelly-2pm-gen4-checklist) before installing.
 
 #### Added
 - Two channels: relay 1 (O1) on Matter endpoint 1 and relay 2 (O2) on endpoint 2, as two On/Off Plug-in Units (Outlet) or two On/Off Lights (Light), plus the board temperature on endpoint 3. Pins from the verified 2PM map: relays GPIO5 and GPIO3, SW1 GPIO11, SW2 GPIO10, button GPIO12, LED GPIO18, NTC GPIO4.

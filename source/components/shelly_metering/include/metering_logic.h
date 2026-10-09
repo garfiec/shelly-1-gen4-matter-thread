@@ -102,6 +102,47 @@ void energy_save_done(energy_save_policy_t *p, int64_t total_mwh, int64_t now_ms
 // larger. A NAN on either side reports when the other is not NAN.
 bool report_changed(float last, float now, float abs_step, float rel_step);
 
+// ---------------------------------------------------------------------------
+// No-load floor
+// ---------------------------------------------------------------------------
+//
+// With nothing connected a meter still reads a little current (noise; about
+// 0.07 A on the 2PM's ADE7953). For reporting only: below min_w and under
+// max_noise_a both read 0. A real small load keeps its reading, because it
+// draws at least min_w.
+
+void noload_cut(float *amps, float *watts, float min_w, float max_noise_a);
+
+// ---------------------------------------------------------------------------
+// Energy from power
+// ---------------------------------------------------------------------------
+//
+// For a meter without a pulse counter: watts held for dt_ms, in mWh. A
+// gap longer than max_dt_ms (a stalled poll) counts as max_dt_ms.
+
+double power_to_mwh(float watts, int64_t dt_ms, int64_t max_dt_ms);
+
+// ---------------------------------------------------------------------------
+// Averaging window (meter calibration)
+// ---------------------------------------------------------------------------
+
+#define AVG_WINDOW_MAX 32
+
+typedef struct {
+    float v[AVG_WINDOW_MAX];
+    int size;
+    int count;
+    int next;
+} avg_window_t;
+
+void avg_window_init(avg_window_t *w, int size);
+// A NAN (no reading) empties the window: the average spans readings in a row.
+void avg_window_push(avg_window_t *w, float x);
+bool avg_window_full(const avg_window_t *w);
+float avg_window_mean(const avg_window_t *w);
+// (max - min) / mean over the window; INFINITY if the mean is 0 or it is empty.
+float avg_window_spread(const avg_window_t *w);
+
 #ifdef __cplusplus
 }
 #endif

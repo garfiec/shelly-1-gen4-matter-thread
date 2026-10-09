@@ -16,4 +16,16 @@ menu "Shelly Wi-Fi maintenance mode"
         default 600
         range 60 3600
 
+    config SHELLY_FACTORY_DUMP
+        bool "Download Shelly's stock data partitions from the page (read only)"
+        depends on SHELLY_MAINTENANCE
+        default n
+        help
+            Adds GET /part?name=... to the Wi-Fi mode page: a read-only copy of
+            one of the stock regions this firmware never uses (shelly, fs_0,
+            fs_1, zb_storage), to study what Shelly stores there, such as
+            factory calibration. Never this firmware's own nvs. The shelly
+            partition may hold the device's own keys and the Wi-Fi mode
+            network is open, so this is for boards being brought up only.
+
 endmenu

@@ -11,5 +11,5 @@ idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS "include"
                        EMBED_TXTFILES ${embed}
                        REQUIRES shelly_app_common
-                       PRIV_REQUIRES esp_system esp_wifi esp_netif esp_event esp_http_server esp_timer app_update lwip
+                       PRIV_REQUIRES esp_system esp_wifi esp_netif esp_event esp_http_server esp_timer app_update esp_partition lwip
                                      shelly_relay shelly_status_led shelly_hw_snapshot shelly_metering)

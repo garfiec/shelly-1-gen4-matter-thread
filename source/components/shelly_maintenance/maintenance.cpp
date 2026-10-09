@@ -35,6 +35,7 @@
 #include <esp_mac.h>
 #include <esp_netif.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <esp_timer.h>
@@ -63,6 +64,11 @@ static const char *TAG = "maintenance";
 #define HW_DATA_BUILT true
 #else
 #define HW_DATA_BUILT false
+#endif
+#if CONFIG_SHELLY_FACTORY_DUMP
+#define FACTORY_DUMP_BUILT true
+#else
+#define FACTORY_DUMP_BUILT false
 #endif
 
 #define AP_IP_0             192
@@ -326,14 +332,15 @@ static esp_err_t status_get(httpd_req_t *req)
                      "\"switch_modes\":%s,\"switch_mode\":\"%s\","
                      "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u,\"diag\":%s,"
                      "\"channels\":%d,\"relay2\":%s,\"switch_mode2\":\"%s\",\"pending_ch\":%u,\"hw_data\":%s,"
-                     "\"meter\":%s,\"meter_skipped\":%s}",
+                     "\"meter\":%s,\"meter_skipped\":%s,\"parts\":%s}",
                      shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text,
                      source, created ? "true" : "false", has_modes ? "true" : "false",
                      ui_switch_mode_name(shelly_switch_mode_get()), pending_kind, pending, (unsigned)secs_left,
                      shelly_diag_log_available() ? "true" : "false", RELAY_CHANNELS,
                      relay_get_ch(1) ? "true" : "false", ui_switch_mode_name(shelly_switch_mode_get_ch(1)),
                      pending_ch, HW_DATA_BUILT ? "true" : "false", shelly_cal_available() ? "true" : "false",
-                     shelly_maintenance_meter_skipped() ? "true" : "false");
+                     shelly_maintenance_meter_skipped() ? "true" : "false",
+                     FACTORY_DUMP_BUILT ? "true" : "false");
     if (n < 0 || n >= (int)sizeof(body)) {
         return send_result(req, "500 Internal Server Error", false, "Status too long");
     }
@@ -523,6 +530,61 @@ static esp_err_t hw_get(httpd_req_t *req)
     esp_err_t err = send_json(req, "200 OK", buf);
     free(buf);
     return err;
+}
+#endif
+
+#if CONFIG_SHELLY_FACTORY_DUMP
+// GET /part?name=shelly: a read-only copy of one of the stock data regions
+// this firmware never uses, to study what Shelly keeps there. Only reads
+// flash, and only these names: never this firmware's own nvs.
+static const char *const DUMP_PARTS[] = {"shelly", "fs_0", "fs_1", "zb_storage"};
+
+static esp_err_t part_get(httpd_req_t *req)
+{
+    touch();
+    char query[48], name[16] = "";
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "name", name, sizeof(name)) != ESP_OK) {
+        return send_result(req, "400 Bad Request", false, "Which partition? /part?name=shelly");
+    }
+    bool allowed = false;
+    for (const char *p : DUMP_PARTS) {
+        allowed = allowed || strcmp(p, name) == 0;
+    }
+    const esp_partition_t *part = allowed ? esp_partition_find_first(ESP_PARTITION_TYPE_DATA,
+                                                                     ESP_PARTITION_SUBTYPE_ANY, name)
+                                          : nullptr;
+    if (part == nullptr) {
+        return send_result(req, "404 Not Found", false, "Not a partition this page copies");
+    }
+    const size_t CHUNK = 2048;
+    char *buf = (char *)malloc(CHUNK);
+    if (buf == nullptr) {
+        return send_result(req, "500 Internal Server Error", false, "Out of memory");
+    }
+    char disposition[64];
+    snprintf(disposition, sizeof(disposition), "attachment; filename=\"%s-%s.bin\"", s_mac, name);
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Content-Disposition", disposition);
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    ESP_LOGI(TAG, "Copying partition %s (%lu bytes at 0x%lx) to the page", name, (unsigned long)part->size,
+             (unsigned long)part->address);
+    esp_err_t err = ESP_OK;
+    for (size_t off = 0; off < part->size && err == ESP_OK; off += CHUNK) {
+        size_t n = part->size - off < CHUNK ? part->size - off : CHUNK;
+        err = esp_partition_read(part, off, buf, n);
+        if (err == ESP_OK) {
+            err = httpd_resp_send_chunk(req, buf, (ssize_t)n);
+        }
+        touch();
+    }
+    free(buf);
+    if (err != ESP_OK) {
+        // Headers are gone already: end the response short, so the download fails visibly.
+        ESP_LOGW(TAG, "Copying partition %s stopped: %s", name, esp_err_to_name(err));
+        return ESP_FAIL;
+    }
+    return httpd_resp_send_chunk(req, nullptr, 0);
 }
 #endif
 
@@ -816,6 +878,9 @@ static esp_err_t start_http(void)
         {.uri = "/meter.json", .method = HTTP_GET, .handler = meter_get, .user_ctx = nullptr},
         {.uri = "/cal", .method = HTTP_POST, .handler = cal_post, .user_ctx = nullptr},
         {.uri = "/cal/reset", .method = HTTP_POST, .handler = cal_reset_post, .user_ctx = nullptr},
+#endif
+#if CONFIG_SHELLY_FACTORY_DUMP
+        {.uri = "/part", .method = HTTP_GET, .handler = part_get, .user_ctx = nullptr},
 #endif
     };
     static_assert(sizeof(uris) / sizeof(uris[0]) <= 16, "raise max_uri_handlers");

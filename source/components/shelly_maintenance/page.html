@@ -102,6 +102,7 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 <h2>Hardware data</h2>
 <div class="muted" style="margin:0 0 8px">What the board read, for bringing up its support. <a href="/hw.json" target="_blank">Raw data</a></div>
 <dl id="hwlist"></dl>
+<div id="parts" class="muted" hidden></div>
 </section>
 
 <section id="meteroff" hidden>
@@ -221,7 +222,13 @@ function refresh() {
       var r2 = document.querySelector('input[name=swmode2][value=' + s.switch_mode2 + ']');
       if (r2) r2.checked = true;
     }
-    $('hwcard').hidden = !s.hw_data;
+    $('hwcard').hidden = !(s.hw_data || s.parts);
+    // Only builds with CONFIG_SHELLY_FACTORY_DUMP serve these.
+    if (s.parts && $('parts').hidden) {
+      $('parts').innerHTML = 'Shelly\'s stock data, read only (may hold the device\'s own keys: keep it private): ' +
+        ['shelly', 'fs_1', 'fs_0', 'zb_storage'].map(function (n) { return '<a href="/part?name=' + n + '">' + n + '</a>'; }).join(' · ');
+      $('parts').hidden = false;
+    }
     $('metercard').hidden = !s.meter;
     $('meteroff').hidden = !s.meter_skipped;
     $('calchrow').hidden = !two;

@@ -29,6 +29,7 @@ progress { width: 100%; height: 10px; margin-top: 10px; }
 .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
 .code { font-size: 1.9rem; font-weight: 600; letter-spacing: .04em; font-variant-numeric: tabular-nums; margin: 2px 0 4px; }
 .muted { color: var(--muted); }
+.qr { display: block; width: 180px; height: 180px; margin: 8px 0 4px; image-rendering: pixelated; }
 section.pending { border-color: var(--accent); }
 input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); margin: 4px 0 10px; font-variant-numeric: tabular-nums; }
 .buttons { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -66,8 +67,10 @@ input[type=text] { font: inherit; width: 100%; padding: 8px 10px; border: 1px so
 <h2>Matter setup code</h2>
 <div class="code" id="code">…</div>
 <div class="muted" id="codesrc"></div>
-<p class="muted" style="margin:10px 0 8px">Use this code to add the device in your Matter app, once you exit this page. A factory reset keeps it. Anyone near this open network can see it while this mode is on.</p>
-<label for="newcode" class="muted">Use your own code instead, for example the 11-digit code on the Shelly sticker (not its QR):</label>
+<img class="qr" id="qr" alt="QR code of the setup code" hidden>
+<div class="muted" id="stickerline" hidden>On the Shelly sticker: <span id="stickercode"></span></div>
+<p class="muted" style="margin:10px 0 8px">Use this code or its QR to add the device in your Matter app, once you exit this page. <span id="resetnote"></span> Anyone near this open network can see it while this mode is on.</p>
+<label for="newcode" class="muted">Use another 11-digit code instead. Typing the sticker's code goes back to it:</label>
 <input type="text" id="newcode" inputmode="numeric" autocomplete="off" placeholder="1234-567-8901" maxlength="30">
 <div class="buttons">
 <button id="setcode">Use this code</button>
@@ -238,8 +241,22 @@ function refresh() {
     if (s.hw_data && (hwPolls++ % 5 === 0)) hwRefresh();
     $('code').textContent = s.code;
     $('codesrc').textContent = s.code_source === 'yours' ? 'Your code' :
+      s.code_source === 'sticker' ? 'From the Shelly sticker' :
       s.code_source === 'test' ? 'The shared test code: this device could not save its own code' :
       (s.code_new ? 'Made by this device just now' : 'Made by this device');
+    // Redraw the QR only when the code changes.
+    var qr = $('qr');
+    if (qr.getAttribute('data-code') !== s.code) {
+      qr.setAttribute('data-code', s.code);
+      qr.onload = function () { qr.hidden = false; };
+      qr.onerror = function () { qr.hidden = true; };
+      qr.src = '/qr.svg?c=' + encodeURIComponent(s.code);
+    }
+    $('stickerline').hidden = !s.sticker || s.code_source === 'sticker';
+    $('stickercode').textContent = s.sticker || '';
+    $('resetnote').textContent = s.sticker ?
+      (s.code_source === 'sticker' ? 'A factory reset keeps it.' : 'A factory reset goes back to the sticker code.') :
+      (s.code_source === 'yours' ? 'A factory reset forgets it.' : 'A factory reset keeps it.');
     $('switchcard').hidden = !s.switch_modes;
     $('diagrow').hidden = !s.diag;
     $('swnow').textContent = MODE_NAMES[s.switch_mode] || s.switch_mode;
@@ -251,7 +268,7 @@ function refresh() {
     $('pendingbox').hidden = !p;
     if (p) {
       var isCode = s.pending_kind === 'code', isCal = s.pending_kind === 'cal';
-      $('pendingwhat').textContent = isCode ? 'New setup code' :
+      $('pendingwhat').textContent = isCode ? (s.pending_sticker ? 'Back to the sticker code' : 'New setup code') :
         isCal ? (p === 'default' ? 'Back to the built-in meter calibration' :
           'New meter calibration' + (s.channels > 1 ? ', measured on relay ' + s.pending_ch : '')) :
         (s.channels > 1 ? 'New wall switch ' + s.pending_ch + ' mode:' : 'New wall switch mode:');

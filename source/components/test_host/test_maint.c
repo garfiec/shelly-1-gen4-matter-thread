@@ -27,6 +27,7 @@
 
 #include "maintenance_dns.h"
 #include "maintenance_image.h"
+#include "qr_svg.h"
 
 static int s_failures = 0;
 static int s_checks = 0;
@@ -242,10 +243,71 @@ static void test_dns(void)
     CHECK(dns_captive_reply(q, qn, ip, r, qn + 15) == 0);
 }
 
+typedef struct {
+    char buf[8192];
+    size_t len;
+    int pieces;
+} svg_sink_t;
+
+static void svg_emit(const char *text, size_t len, void *ctx)
+{
+    svg_sink_t *s = (svg_sink_t *)ctx;
+    if (s->len + len < sizeof(s->buf)) {
+        memcpy(s->buf + s->len, text, len);
+        s->len += len;
+        s->buf[s->len] = '\0';
+    }
+    s->pieces++;
+}
+
+// Count the dark modules the path draws: each "h<run>" adds run.
+static int svg_dark_modules(const char *svg)
+{
+    int dark = 0;
+    for (const char *p = strstr(svg, " d=\""); p != NULL && (p = strchr(p, 'h')) != NULL; p++) {
+        if (p[1] != '-') {
+            dark += atoi(p + 1);
+        }
+    }
+    return dark;
+}
+
+static void test_qr_svg(void)
+{
+    static svg_sink_t s;
+    memset(&s, 0, sizeof(s));
+    // A made-up code's QR text: version 1 (21 modules) plus the quiet zone.
+    CHECK(qr_svg_write("MT:-24J042C00KA0648G00", svg_emit, &s));
+    static const char head[] = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 29 29\"";
+    CHECK(strncmp(s.buf, head, sizeof(head) - 1) == 0);
+    CHECK(s.len > 9 && strcmp(s.buf + s.len - 9, "\"/></svg>") == 0);
+    CHECK(strstr(s.buf, "<rect width=\"29\" height=\"29\" fill=\"#fff\"/>") != NULL);
+    // The three finder patterns alone are 3 x 33 dark modules; every module
+    // is inside the symbol (4 to 24).
+    int dark = svg_dark_modules(s.buf);
+    CHECK(dark > 99 && dark < 21 * 21);
+    CHECK(strstr(s.buf, "M4 4h7v1h-7z") != NULL); // The top-left finder's top row
+    CHECK(strstr(s.buf, "M3 ") == NULL && strstr(s.buf, "M25 ") == NULL);
+    // The same text gives the same image.
+    static svg_sink_t again;
+    memset(&again, 0, sizeof(again));
+    CHECK(qr_svg_write("MT:-24J042C00KA0648G00", svg_emit, &again) && strcmp(again.buf, s.buf) == 0);
+    // Longer text takes a larger version; too long is refused.
+    memset(&s, 0, sizeof(s));
+    CHECK(qr_svg_write("MT:-24J042C00KA0648G00MT:-24J042C00KA0648G00", svg_emit, &s));
+    CHECK(strstr(s.buf, "viewBox=\"0 0 29 29\"") == NULL);
+    char big[400];
+    memset(big, 'A', sizeof(big) - 1);
+    big[sizeof(big) - 1] = '\0';
+    memset(&s, 0, sizeof(s));
+    CHECK(!qr_svg_write(big, svg_emit, &s) && s.pieces == 0);
+}
+
 int main(void)
 {
     test_image();
     test_dns();
+    test_qr_svg();
     printf("%d maintenance checks, %d failures\n", s_checks, s_failures);
     return s_failures == 0 ? 0 : 1;
 }

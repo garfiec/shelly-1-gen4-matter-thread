@@ -47,13 +47,16 @@ ${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
 
 "$OUT_UI"
 
-# Wi-Fi maintenance mode: the upload check and the captive-portal DNS.
+# Wi-Fi maintenance mode: the upload check, the captive-portal DNS and the
+# setup code's QR image.
 OUT_MAINT="${TMPDIR:-/tmp}/shelly-test-maint"
 ${CC:-cc} -std=c11 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined \
     -I$C/shelly_maintenance/include -I$C/shelly_app_common/include \
     test_maint.c \
     $C/shelly_maintenance/maintenance_image.c \
     $C/shelly_maintenance/maintenance_dns.c \
+    $C/shelly_maintenance/qr_svg.c \
+    $C/shelly_maintenance/qrcodegen/qrcodegen.c \
     -o "$OUT_MAINT"
 
 "$OUT_MAINT"

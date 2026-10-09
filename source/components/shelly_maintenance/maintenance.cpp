@@ -24,6 +24,7 @@
 #include "maintenance.h"
 #include "maintenance_dns.h"
 #include "maintenance_image.h"
+#include "qr_svg.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -302,7 +303,19 @@ static esp_err_t status_get(httpd_req_t *req)
     bool saved = shelly_setup_code_current(&code, &created);
     char code_text[SETUP_CODE_FORMATTED_LEN];
     setup_code_manual_format(code.passcode, code.discriminator, code_text);
-    const char *source = !saved ? "test" : code.source == SETUP_CODE_SOURCE_USER ? "yours" : "generated";
+    const char *source = !saved                                     ? "test"
+                         : code.source == SETUP_CODE_SOURCE_USER    ? "yours"
+                         : code.source == SETUP_CODE_SOURCE_STICKER ? "sticker"
+                                                                    : "generated";
+    // The sticker's code, shown beside another code in use.
+    setup_code_t sticker;
+    char sticker_text[SETUP_CODE_FORMATTED_LEN + 2] = "null";
+    if (shelly_setup_code_sticker(&sticker)) {
+        char t[SETUP_CODE_FORMATTED_LEN];
+        setup_code_manual_format(sticker.passcode, sticker.discriminator, t);
+        snprintf(sticker_text, sizeof(sticker_text), "\"%s\"", t);
+    }
+    bool pending_sticker = false;
     shelly_change_t change;
     uint32_t secs_left = 0;
     const char *pending_kind = "null";
@@ -313,6 +326,7 @@ static esp_err_t status_get(httpd_req_t *req)
             setup_code_manual_format(change.code.passcode, change.code.discriminator, t);
             snprintf(pending, sizeof(pending), "\"%s\"", t);
             pending_kind = "\"code\"";
+            pending_sticker = change.code.source == SETUP_CODE_SOURCE_STICKER;
         } else if (change.kind == SHELLY_CHANGE_CALIBRATION) {
             snprintf(pending, sizeof(pending), "\"%s\"", cal_ratios_is_default(&change.cal) ? "default" : "new");
             pending_kind = "\"cal\"";
@@ -325,14 +339,14 @@ static esp_err_t status_get(httpd_req_t *req)
     bool channel_kind = strcmp(pending_kind, "\"switch\"") == 0 || strcmp(pending_kind, "\"cal\"") == 0;
     unsigned pending_ch = channel_kind ? change.channel + 1u : 0u;
 
-    char body[768];
+    char body[1024];
     int n = snprintf(body, sizeof(body),
                      "{\"hw\":\"%s\",\"variant\":\"%s\",\"version\":\"%s\",\"mac\":\"%s\",\"relay\":%s,"
                      "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,"
                      "\"switch_modes\":%s,\"switch_mode\":\"%s\","
                      "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u,\"diag\":%s,"
                      "\"channels\":%d,\"relay2\":%s,\"switch_mode2\":\"%s\",\"pending_ch\":%u,\"hw_data\":%s,"
-                     "\"meter\":%s,\"meter_skipped\":%s,\"parts\":%s}",
+                     "\"meter\":%s,\"meter_skipped\":%s,\"parts\":%s,\"sticker\":%s,\"pending_sticker\":%s}",
                      shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text,
                      source, created ? "true" : "false", has_modes ? "true" : "false",
                      ui_switch_mode_name(shelly_switch_mode_get()), pending_kind, pending, (unsigned)secs_left,
@@ -340,7 +354,7 @@ static esp_err_t status_get(httpd_req_t *req)
                      relay_get_ch(1) ? "true" : "false", ui_switch_mode_name(shelly_switch_mode_get_ch(1)),
                      pending_ch, HW_DATA_BUILT ? "true" : "false", shelly_cal_available() ? "true" : "false",
                      shelly_maintenance_meter_skipped() ? "true" : "false",
-                     FACTORY_DUMP_BUILT ? "true" : "false");
+                     FACTORY_DUMP_BUILT ? "true" : "false", sticker_text, pending_sticker ? "true" : "false");
     if (n < 0 || n >= (int)sizeof(body)) {
         return send_result(req, "500 Internal Server Error", false, "Status too long");
     }
@@ -451,6 +465,32 @@ static esp_err_t code_set_post(httpd_req_t *req)
     default:
         return send_result(req, "400 Bad Request", false, "Enter the 11-digit code, like 1234-567-8901");
     }
+}
+
+// GET /qr.svg: the QR of the setup code in use. The sticker's own as
+// printed when the sticker code is in use; otherwise one with this
+// firmware's vendor and product ID.
+static void svg_emit(const char *text, size_t len, void *ctx)
+{
+    httpd_resp_send_chunk((httpd_req_t *)ctx, text, (ssize_t)len);
+}
+
+static esp_err_t qr_get(httpd_req_t *req)
+{
+    touch();
+    setup_code_t code;
+    bool created = false;
+    shelly_setup_code_current(&code, &created);
+    char qr[SETUP_CODE_QR_MAX];
+    if (!shelly_setup_code_qr(&code, qr)) {
+        return send_result(req, "500 Internal Server Error", false, "No QR for this code");
+    }
+    httpd_resp_set_type(req, "image/svg+xml");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    if (!qr_svg_write(qr, svg_emit, req)) {
+        return send_result(req, "500 Internal Server Error", false, "No QR for this code");
+    }
+    return httpd_resp_send_chunk(req, nullptr, 0);
 }
 
 static esp_err_t code_new_post(httpd_req_t *req)
@@ -848,7 +888,7 @@ static esp_err_t start_http(void)
     cfg.stack_size = HTTP_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 16;
+    cfg.max_uri_handlers = 18;
     cfg.recv_wait_timeout = 10;
     cfg.send_wait_timeout = 10;
 
@@ -865,6 +905,7 @@ static esp_err_t start_http(void)
         {.uri = "/update", .method = HTTP_POST, .handler = update_post, .user_ctx = nullptr},
         {.uri = "/code/set", .method = HTTP_POST, .handler = code_set_post, .user_ctx = nullptr},
         {.uri = "/code/new", .method = HTTP_POST, .handler = code_new_post, .user_ctx = nullptr},
+        {.uri = "/qr.svg", .method = HTTP_GET, .handler = qr_get, .user_ctx = nullptr},
         {.uri = "/switch/mode", .method = HTTP_POST, .handler = switch_mode_post, .user_ctx = nullptr},
         {.uri = "/change/cancel", .method = HTTP_POST, .handler = change_cancel_post, .user_ctx = nullptr},
 #if CONFIG_SHELLY_DIAG_LOG
@@ -883,7 +924,7 @@ static esp_err_t start_http(void)
         {.uri = "/part", .method = HTTP_GET, .handler = part_get, .user_ctx = nullptr},
 #endif
     };
-    static_assert(sizeof(uris) / sizeof(uris[0]) <= 16, "raise max_uri_handlers");
+    static_assert(sizeof(uris) / sizeof(uris[0]) <= 18, "raise max_uri_handlers");
     for (const httpd_uri_t &uri : uris) {
         err = httpd_register_uri_handler(server, &uri);
         if (err != ESP_OK) {

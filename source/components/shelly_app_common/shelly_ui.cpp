@@ -40,6 +40,7 @@
 #include <relay.h>
 #include <shelly_diag_log.h>
 #include <shelly_settings.h>
+#include <shelly_setup_code.h>
 
 using namespace esp_matter;
 
@@ -106,6 +107,7 @@ static void defer_factory_reset(void)
 static void factory_reset_work(intptr_t arg)
 {
     ESP_LOGW(TAG, "Factory reset");
+    shelly_setup_code_factory_reset();
     esp_matter::factory_reset();
 }
 

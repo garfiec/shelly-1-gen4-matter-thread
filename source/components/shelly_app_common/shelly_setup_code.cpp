@@ -20,9 +20,12 @@
 #include "shelly_settings.h"
 
 #include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include <cJSON.h>
 #include <esp_log.h>
+#include <esp_partition.h>
 #include <esp_random.h>
 #include <nvs.h>
 #include <sdkconfig.h>
@@ -41,7 +44,7 @@
 #if CONFIG_SHELLY_MAINTENANCE
 #define OWN_CODE 1
 #else
-#define OWN_CODE 0 // No Wi-Fi page to show or set a code: always the test code
+#define OWN_CODE 0 // No Wi-Fi page to show or set a code: the sticker's or the test code
 #endif
 
 static const char *TAG = "setup_code";
@@ -56,6 +59,69 @@ static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static uint32_t rand32(void *)
 {
     return esp_random();
+}
+
+// ---- Shelly's sticker code, from the stock "shelly" partition ----
+// Read once, only read: never written. Only the three setup code fields are
+// used; the partition's keys and certificates are never looked at.
+
+#define SHELLY_PARTITION_SUBTYPE 0x88
+#define SHELLY_PARTITION_READ_MAX 8192 // Its JSON is about 2.6 KB
+
+static setup_code_sticker_t s_sticker;
+static int8_t s_sticker_state; // 0 not read yet, 1 usable, -1 none
+
+static const char *json_string(const cJSON *obj, const char *key)
+{
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return cJSON_IsString(v) ? v->valuestring : nullptr;
+}
+
+static bool read_sticker(setup_code_sticker_t *out)
+{
+    const esp_partition_t *part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, (esp_partition_subtype_t)SHELLY_PARTITION_SUBTYPE, "shelly");
+    if (part == nullptr) {
+        ESP_LOGW(TAG, "No Shelly partition: no sticker code");
+        return false;
+    }
+    size_t len = part->size < SHELLY_PARTITION_READ_MAX ? part->size : SHELLY_PARTITION_READ_MAX;
+    char *buf = (char *)malloc(len);
+    if (buf == nullptr) {
+        ESP_LOGW(TAG, "No memory to read the Shelly partition");
+        return false;
+    }
+    bool ok = false;
+    esp_err_t err = esp_partition_read(part, 0, buf, len);
+    if (err == ESP_OK) {
+        // The JSON ends at the first erased (0xFF) or NUL byte.
+        size_t n = 0;
+        while (n < len && buf[n] != (char)0xFF && buf[n] != '\0') {
+            n++;
+        }
+        cJSON *root = n > 0 && n < len ? cJSON_ParseWithLength(buf, n) : nullptr;
+        const cJSON *matter = cJSON_GetObjectItemCaseSensitive(root, "matter");
+        ok = setup_code_sticker_parse(json_string(matter, "setup_qr_code"), json_string(matter, "setup_manual_code"),
+                                      json_string(matter, "setup_verifier"), out);
+        cJSON_Delete(root);
+    }
+    memset(buf, 0, len); // It also held the device's keys
+    free(buf);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Reading the Shelly partition failed: %s", esp_err_to_name(err));
+    } else if (!ok) {
+        ESP_LOGW(TAG, "No usable sticker code in the Shelly partition");
+    }
+    return ok;
+}
+
+// The sticker code, or nullptr. With s_lock held.
+static const setup_code_sticker_t *sticker(void)
+{
+    if (s_sticker_state == 0) {
+        s_sticker_state = read_sticker(&s_sticker) ? 1 : -1;
+    }
+    return s_sticker_state > 0 ? &s_sticker : nullptr;
 }
 
 #if OWN_CODE
@@ -81,8 +147,39 @@ static bool load(setup_code_t *out)
 
 #endif
 
+#if OWN_CODE
+// Forget the owner's own code, keeping a generated one (the fallback for
+// a device without a sticker code). With s_lock held.
+static bool forget_user_code(void)
+{
+    setup_code_t saved;
+    if (!load(&saved) || saved.source != SETUP_CODE_SOURCE_USER) {
+        return true;
+    }
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        err = nvs_erase_key(h, NVS_KEY);
+        if (err == ESP_OK) {
+            err = nvs_commit(h);
+        }
+        nvs_close(h);
+    }
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGE(TAG, "Forgetting your setup code failed: %s", esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+#endif
+
 static bool save(const setup_code_t *code)
 {
+#if OWN_CODE
+    if (code->source == SETUP_CODE_SOURCE_STICKER) {
+        return forget_user_code(); // The sticker code is read, never saved
+    }
+#endif
     uint8_t rec[SETUP_CODE_RECORD_LEN];
     setup_code_record_pack(code, rec);
     nvs_handle_t h;
@@ -108,16 +205,32 @@ static void test_code(setup_code_t *out)
     out->source = SETUP_CODE_SOURCE_TEST;
 }
 
-#if OWN_CODE
-// The saved code, or a new one saved now. Call with s_lock held, and only
-// once a radio is on: esp_random() is only truly random then.
-static bool load_or_create(setup_code_t *out, bool *created)
+// The code to pair with, first match wins: the owner's own, the sticker's,
+// a generated one (made and saved now if there is none), the test code.
+// False only when it falls back to the test code. Call with s_lock held, and
+// only once a radio is on: esp_random() is only truly random then.
+static bool resolve(setup_code_t *out, bool *created)
 {
-    static bool s_save_failed = false; // Try once a boot: the page asks every 2 s
     *created = false;
-    if (load(out)) {
+#if OWN_CODE
+    setup_code_t saved;
+    bool have = load(&saved);
+    if (have && saved.source == SETUP_CODE_SOURCE_USER) {
+        *out = saved;
         return true;
     }
+#endif
+    const setup_code_sticker_t *st = sticker();
+    if (st != nullptr) {
+        *out = st->code;
+        return true;
+    }
+#if OWN_CODE
+    if (have) {
+        *out = saved;
+        return true;
+    }
+    static bool s_save_failed = false; // Try once a boot: the page asks every 2 s
     if (s_save_failed) {
         test_code(out);
         return false;
@@ -133,8 +246,11 @@ static bool load_or_create(setup_code_t *out, bool *created)
     *out = fresh;
     *created = true;
     return true;
-}
+#else
+    test_code(out);
+    return false;
 #endif
+}
 
 // ---- Normal mode: the provider Matter pairs with ----
 
@@ -154,14 +270,14 @@ public:
     CHIP_ERROR GetSpake2pIterationCount(uint32_t &count) override
     {
         ReturnErrorOnFailure(Ensure());
-        count = chip::Crypto::kSpake2p_Min_PBKDF_Iterations;
+        count = m_iterations;
         return CHIP_NO_ERROR;
     }
 
     CHIP_ERROR GetSpake2pSalt(chip::MutableByteSpan &salt) override
     {
         ReturnErrorOnFailure(Ensure());
-        return chip::CopySpanToMutableSpan(chip::ByteSpan(m_salt), salt);
+        return chip::CopySpanToMutableSpan(chip::ByteSpan(m_salt, m_salt_len), salt);
     }
 
     CHIP_ERROR GetSpake2pVerifier(chip::MutableByteSpan &verifier, size_t &len) override
@@ -199,8 +315,10 @@ public:
         char f[SETUP_CODE_FORMATTED_LEN];
         setup_code_manual_format(m_code.passcode, m_code.discriminator, f);
         const char *why;
-        if (!OWN_CODE) {
-            why = "the shared test code: this build has no Wi-Fi mode";
+        if (m_code.source == SETUP_CODE_SOURCE_STICKER) {
+            why = "from the Shelly sticker";
+        } else if (!OWN_CODE) {
+            why = "the shared test code: no sticker code, and this build has no Wi-Fi mode";
         } else if (!m_saved) {
             why = "the shared test code: the device's own code could not be saved";
         } else if (m_code.source == SETUP_CODE_SOURCE_USER) {
@@ -215,25 +333,46 @@ private:
     // With s_lock held.
     CHIP_ERROR Prepare()
     {
-#if OWN_CODE
-        m_saved = load_or_create(&m_code, &m_created);
-#else
-        test_code(&m_code);
-#endif
-        esp_fill_random(m_salt, sizeof(m_salt));
-        chip::Crypto::Spake2pVerifier v;
-        ReturnErrorOnFailure(v.Generate(chip::Crypto::kSpake2p_Min_PBKDF_Iterations, chip::ByteSpan(m_salt),
-                                        m_code.passcode));
-        chip::MutableByteSpan out(m_verifier);
-        ReturnErrorOnFailure(v.Serialize(out));
+        m_saved = resolve(&m_code, &m_created);
+        if (m_code.source == SETUP_CODE_SOURCE_STICKER && s_sticker.has_verifier) {
+            // Serve the sticker's own salt, iterations and verifier, once the
+            // verifier made from its passcode matches the stored one: that
+            // proves the code was read right.
+            ReturnErrorOnFailure(MakeVerifier(s_sticker.salt, s_sticker.salt_len, s_sticker.iterations));
+            if (memcmp(m_verifier, s_sticker.verifier, sizeof(m_verifier)) != 0) {
+                ESP_LOGE(TAG, "The sticker code doesn't match its stored verifier: not using it");
+                s_sticker_state = -1;
+                m_saved = resolve(&m_code, &m_created);
+            } else {
+                m_ready = true;
+                return CHIP_NO_ERROR;
+            }
+        }
+        // A new salt each boot; the verifier is computed once and kept.
+        uint8_t salt[chip::Crypto::kSpake2p_Max_PBKDF_Salt_Length];
+        esp_fill_random(salt, sizeof(salt));
+        ReturnErrorOnFailure(MakeVerifier(salt, sizeof(salt), chip::Crypto::kSpake2p_Min_PBKDF_Iterations));
         m_ready = true;
         return CHIP_NO_ERROR;
+    }
+
+    CHIP_ERROR MakeVerifier(const uint8_t *salt, size_t salt_len, uint32_t iterations)
+    {
+        memcpy(m_salt, salt, salt_len);
+        m_salt_len = salt_len;
+        m_iterations = iterations;
+        chip::Crypto::Spake2pVerifier v;
+        ReturnErrorOnFailure(v.Generate(iterations, chip::ByteSpan(m_salt, m_salt_len), m_code.passcode));
+        chip::MutableByteSpan out(m_verifier);
+        return v.Serialize(out);
     }
 
     bool m_ready = false;
     bool m_saved = false;
     bool m_created = false;
     setup_code_t m_code = {};
+    uint32_t m_iterations = chip::Crypto::kSpake2p_Min_PBKDF_Iterations;
+    size_t m_salt_len = 0;
     uint8_t m_salt[chip::Crypto::kSpake2p_Max_PBKDF_Salt_Length] = {};
     uint8_t m_verifier[chip::Crypto::kSpake2p_VerifierSerialized_Length] = {};
 };
@@ -265,16 +404,45 @@ void shelly_setup_code_log(void)
 
 bool shelly_setup_code_current(setup_code_t *out, bool *created)
 {
-#if OWN_CODE
     pthread_mutex_lock(&s_lock);
-    bool ok = load_or_create(out, created);
+    bool ok = resolve(out, created);
     pthread_mutex_unlock(&s_lock);
     return ok;
-#else
-    test_code(out);
-    *created = false;
-    return false;
-#endif
+}
+
+bool shelly_setup_code_sticker(setup_code_t *out)
+{
+    pthread_mutex_lock(&s_lock);
+    const setup_code_sticker_t *st = sticker();
+    if (st != nullptr) {
+        *out = st->code;
+    }
+    pthread_mutex_unlock(&s_lock);
+    return st != nullptr;
+}
+
+bool shelly_setup_code_qr(const setup_code_t *code, char out[SETUP_CODE_QR_MAX])
+{
+    if (code->source == SETUP_CODE_SOURCE_STICKER) {
+        pthread_mutex_lock(&s_lock);
+        const setup_code_sticker_t *st = sticker();
+        bool same = st != nullptr && st->code.passcode == code->passcode &&
+                    st->code.discriminator == code->discriminator;
+        if (same) {
+            strcpy(out, st->qr); // Exactly as printed on the sticker
+        }
+        pthread_mutex_unlock(&s_lock);
+        if (same) {
+            return true;
+        }
+    }
+    setup_code_qr_t q = {};
+    q.vendor_id = CONFIG_DEVICE_VENDOR_ID;
+    q.product_id = CONFIG_DEVICE_PRODUCT_ID;
+    q.capabilities = 0x02; // BLE
+    q.discriminator = code->discriminator;
+    q.passcode = code->passcode;
+    return setup_code_qr_encode(&q, out);
 }
 
 setup_code_err_t shelly_setup_code_stage_manual(const char *text)
@@ -287,9 +455,16 @@ setup_code_err_t shelly_setup_code_stage_manual(const char *text)
     }
     shelly_change_t change = {};
     change.kind = SHELLY_CHANGE_SETUP_CODE;
-    change.code.passcode = passcode;
-    change.code.discriminator = setup_code_discriminator_from_short(short_disc, (uint8_t)esp_random());
-    change.code.source = SETUP_CODE_SOURCE_USER;
+    pthread_mutex_lock(&s_lock);
+    const setup_code_sticker_t *st = sticker();
+    if (setup_code_is_sticker(st, passcode, short_disc)) {
+        change.code = st->code; // The sticker's own: its full discriminator, so its QR works too
+    } else {
+        change.code.passcode = passcode;
+        change.code.discriminator = setup_code_discriminator_from_short(short_disc, (uint8_t)esp_random());
+        change.code.source = SETUP_CODE_SOURCE_USER;
+    }
+    pthread_mutex_unlock(&s_lock);
     shelly_change_stage(&change);
     return SETUP_CODE_OK;
 }
@@ -311,7 +486,21 @@ bool shelly_setup_code_save(const setup_code_t *code)
     bool ok = save(code);
     pthread_mutex_unlock(&s_lock);
     if (ok) {
-        ESP_LOGW(TAG, "New setup code saved; it applies from the next normal boot");
+        ESP_LOGW(TAG, "%s; it applies from the next normal boot",
+                 code->source == SETUP_CODE_SOURCE_STICKER ? "Back to the sticker code" : "New setup code saved");
     }
     return ok;
+}
+
+void shelly_setup_code_factory_reset(void)
+{
+#if OWN_CODE
+    pthread_mutex_lock(&s_lock);
+    setup_code_t saved;
+    bool user = load(&saved) && saved.source == SETUP_CODE_SOURCE_USER;
+    if (user && forget_user_code()) {
+        ESP_LOGW(TAG, "Factory reset: your own setup code is forgotten");
+    }
+    pthread_mutex_unlock(&s_lock);
+#endif
 }

@@ -11,6 +11,11 @@ Version 2.0:
   - the on_off_plugin_unit example, the basis for the Opener and Outlet variants
   - the light_switch example, the basis for the Light Switch variant
 
+source/components/shelly_maintenance/qrcodegen/ is the QR Code generator library
+(C) by Project Nayuki (https://www.nayuki.io/page/qr-code-generator-library),
+copyright (c) Project Nayuki, used unmodified under the MIT License (in each
+file's header).
+
 The compiled firmware is built with the ESP-IDF and ESP-Matter SDKs by Espressif
 Systems and links additional components, including the Matter SDK (connectedhomeip,
 https://github.com/project-chip/connectedhomeip), OpenThread

@@ -1,6 +1,7 @@
-# The upload check and the DNS reply are pure C and always built (the host
-# tests use them too). The Wi-Fi mode itself only with CONFIG_SHELLY_MAINTENANCE.
-set(srcs "maintenance_image.c" "maintenance_dns.c")
+# The upload check, the DNS reply and the QR image are pure C and always
+# built (the host tests use them too). The Wi-Fi mode itself only with
+# CONFIG_SHELLY_MAINTENANCE.
+set(srcs "maintenance_image.c" "maintenance_dns.c" "qr_svg.c" "qrcodegen/qrcodegen.c")
 set(embed "")
 if(CONFIG_SHELLY_MAINTENANCE)
     list(APPEND srcs "maintenance.cpp")

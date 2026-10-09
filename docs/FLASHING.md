@@ -103,7 +103,7 @@ The fastest way to install this firmware is the Shelly web UI, over your network
 3. In the device's firmware settings, choose to install firmware from a file and select the `.zip` you downloaded.
 4. Confirm the update. The device flashes the new firmware and reboots into BLE commissioning mode, and the LED will rapidly blink. If it does not reboot automatically, remove and reapply power. A full power cycle after the install is good practice in any case: the stock firmware can leave the relay and LED pins latched in their last state until power is removed. This firmware releases them at boot, and a power cycle guarantees it.
 5. [Factory reset](COMMISSIONING.md#factory-reset) the Shelly by holding the button for 10 seconds, then release while the LED blinks every ¼ second. The LED gives one long flash, the device will reboot and the LED will rapidly blink again, indicating it is ready to commission. ⚠️ Do not skip this step. The previous firmware leaves data on the device that will cause Matter OTA updates to silently fail. Factory reset wipes this data. If you skip it and commission anyway, you will need to factory reset and recommission later to fix OTA updates.
-6. Read the device's setup code: with no serial cable on this path, it's on the Wi-Fi mode page (see [Your setup code](COMMISSIONING.md#your-setup-code)).
+6. Read the device's setup code: it's normally the code on the Shelly sticker, and the Wi-Fi mode page shows the one in use (see [Your setup code](COMMISSIONING.md#your-setup-code)).
 7. Continue to [Commissioning](COMMISSIONING.md).
 
 ---

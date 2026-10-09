@@ -92,7 +92,7 @@ While a Matter update downloads and installs, the status LED blinks slowly and e
 
 > 💡 **One image updates every matching device.** The provider offers the stored image by vendor and product ID; a single `.ota` updates every device of that variant on your Thread network. Publish once, and each matching device picks it up the next time it checks in.
 
-> **Updating to a release with per-device setup codes.** Your pairings are kept. After the update the device makes its own [setup code](COMMISSIONING.md#your-setup-code), so the shared test code `3497-011-2332` stops working for new pairing windows (3 presses of the button, or adding it to another ecosystem). Read the new code from the Wi-Fi mode page before you need it. If the update rolls back, the older firmware uses the test code again.
+> **Updating to a release with per-device setup codes.** Your pairings are kept. After the update the device uses its own [setup code](COMMISSIONING.md#your-setup-code), normally the one on its Shelly sticker, so the shared test code `3497-011-2332` stops working for new pairing windows (3 presses of the button, or adding it to another ecosystem). Read the new code from the Wi-Fi mode page before you need it. If the update rolls back, the older firmware uses the test code again.
 
 ---
 
@@ -145,7 +145,7 @@ While the mode lasts:
 
 ### Matter setup code
 
-The page also shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. To change it, enter your own 11-digit code (for example from the Shelly sticker) or press **Make a new random code**, then press the device's button 3 times within 2 minutes. The LED gives one long flash and the page confirms. Until you press, nothing changes; after 2 minutes, on Cancel or when you leave the mode, the change is dropped. The new code applies once the device is back in normal operation. Your existing pairings keep working either way.
+The page also shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. It shows its QR too, and the sticker's code when another is in use. To change it, enter another 11-digit code (the sticker's own goes back to it) or press **Make a new random code**, then press the device's button 3 times within 2 minutes. The LED gives one long flash and the page confirms. Until you press, nothing changes; after 2 minutes, on Cancel or when you leave the mode, the change is dropped. The new code applies once the device is back in normal operation. Your existing pairings keep working either way.
 
 The network is open, so anyone nearby can read the code while the mode is on. Changing it needs the button presses, which need the device in hand.
 

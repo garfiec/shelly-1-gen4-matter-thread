@@ -50,7 +50,8 @@ extern "C" {
 typedef enum {
     SETUP_CODE_SOURCE_TEST = 0,      // The shared test code (fallback)
     SETUP_CODE_SOURCE_GENERATED = 1, // Made by the device
-    SETUP_CODE_SOURCE_USER = 2,      // Entered by the owner (e.g. the Shelly sticker)
+    SETUP_CODE_SOURCE_USER = 2,      // Entered by the owner
+    SETUP_CODE_SOURCE_STICKER = 3,   // Shelly's own, from the stock "shelly" partition (never saved)
 } setup_code_source_t;
 
 typedef struct {
@@ -91,11 +92,63 @@ void setup_code_generate(setup_code_rand32_fn rand32, void *ctx, setup_code_t *o
 // from the code, the low 8 from random_low8.
 uint16_t setup_code_discriminator_from_short(uint8_t short_discriminator, uint8_t random_low8);
 
+// ---- The QR code payload (Matter Core spec 5.1.3) ----
+// "MT:" and the base38 text of 88 bits: version (3), vendor ID (16),
+// product ID (16), commissioning flow (2), discovery capabilities (8),
+// discriminator (12), passcode (27), padding (4). Optional TLV data may
+// follow; it is ignored.
+
+#define SETUP_CODE_QR_LEN 23 // "MT:" + 19 base38 characters + NUL (no TLV)
+#define SETUP_CODE_QR_MAX 64 // The longest QR text accepted from the sticker, with NUL
+
+typedef struct {
+    uint8_t version;
+    uint16_t vendor_id;
+    uint16_t product_id;
+    uint8_t flow;            // 0: standard commissioning
+    uint8_t capabilities;    // Bit 1: BLE, bit 2: on network
+    uint16_t discriminator;
+    uint32_t passcode;
+} setup_code_qr_t;
+
+// Decode "MT:..." text. False for anything that isn't a version 0 payload
+// with a valid passcode.
+bool setup_code_qr_decode(const char *text, setup_code_qr_t *out);
+// Encode a payload without TLV data. False if it isn't valid.
+bool setup_code_qr_encode(const setup_code_qr_t *in, char out[SETUP_CODE_QR_LEN]);
+
+// ---- Shelly's sticker code, from the stock "shelly" partition ----
+// Its JSON carries matter.setup_qr_code, matter.setup_manual_code and
+// matter.setup_verifier ("<salt base64>,<iterations>,<verifier base64>").
+
+#define SETUP_CODE_SALT_MAX     32 // Matter's SPAKE2+ salt: 16 to 32 bytes
+#define SETUP_CODE_VERIFIER_LEN 97 // Serialized SPAKE2+ verifier (W0 and L)
+
+typedef struct {
+    setup_code_t code;       // Source SETUP_CODE_SOURCE_STICKER
+    char qr[SETUP_CODE_QR_MAX];
+    bool has_verifier;       // The stored salt, iterations and verifier below
+    uint32_t iterations;
+    uint8_t salt_len;
+    uint8_t salt[SETUP_CODE_SALT_MAX];
+    uint8_t verifier[SETUP_CODE_VERIFIER_LEN];
+} setup_code_sticker_t;
+
+// Check the sticker's QR and manual codes against each other: both must
+// parse and carry the same passcode and short discriminator. The verifier
+// text may be NULL; if it is malformed, has_verifier is false and the code
+// is still used (the passcode is known; the device makes its own salt).
+bool setup_code_sticker_parse(const char *qr, const char *manual, const char *verifier, setup_code_sticker_t *out);
+
+// Does a typed manual code name the sticker's code?
+bool setup_code_is_sticker(const setup_code_sticker_t *sticker, uint32_t passcode, uint8_t short_discriminator);
+
 // The saved record: magic, format version, passcode, discriminator, source.
 #define SETUP_CODE_RECORD_LEN 12
 void setup_code_record_pack(const setup_code_t *code, uint8_t out[SETUP_CODE_RECORD_LEN]);
 // False for a record of the wrong size, magic or version, or with a code
-// that is not valid.
+// that is not valid. A sticker code is never saved, so that source is
+// refused too.
 bool setup_code_record_unpack(const uint8_t *in, size_t len, setup_code_t *out);
 
 #ifdef __cplusplus

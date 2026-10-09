@@ -83,7 +83,7 @@ The pure logic in the shared components has host tests that need only a C compil
 source/components/test_host/run.sh
 ```
 
-The manual-code encoder was cross-checked against CHIP's own generator (`src/setup_payload/python/SetupPayload.py`, in the builder container): `test_setup_code vectors 60` prints random codes to compare.
+The manual-code encoder was cross-checked against CHIP's own generator (`src/setup_payload/python/SetupPayload.py`, in the builder container): `test_setup_code vectors 60` prints random codes to compare. The QR payload tests use vectors from the same generator. The page's QR image comes from Nayuki's qrcodegen (vendored in `shelly_maintenance/qrcodegen`, MIT); its output was checked module for module against the independent `segno` encoder.
 
 The same script runs `scripts/check-ui-spec.py`, which fails if [Button, Switch and LED](BUTTON-AND-LED.md) and the code disagree. Change them together (see [CLAUDE.md](../CLAUDE.md)).
 

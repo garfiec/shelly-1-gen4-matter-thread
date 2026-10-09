@@ -49,7 +49,7 @@ This is normal and expected. Tapping "Add Anyway" or the equivalent proceeds wit
 
 The firmware uses the publicly available ESP-Matter test VID/PIDs. These are standard development credentials published for non-commercial use during firmware development.
 
-Every unit shares the same test attestation certificate (the one that makes controllers show the uncertified warning), but not the same setup code: each device makes its own, or takes yours from the Shelly sticker. See [Your setup code](COMMISSIONING.md#your-setup-code), including the few cases where a device falls back to the shared test code `3497-011-2332`.
+Every unit shares the same test attestation certificate (the one that makes controllers show the uncertified warning), but not the same setup code: each device uses the code on its Shelly sticker, one it made itself, or one you entered. See [Your setup code](COMMISSIONING.md#your-setup-code), including the few cases where a device falls back to the shared test code `3497-011-2332`.
 
 Once a device is commissioned, your pairings no longer depend on the setup code: your Matter ecosystem manages credentials from then on. The code is only asked for when a new pairing window opens.
 

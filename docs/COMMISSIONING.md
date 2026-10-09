@@ -40,18 +40,22 @@ The complete button and LED specification is [Button, Switch and LED](BUTTON-AND
 
 ## Your setup code
 
-Each device has its own Matter setup code, an 11-digit number like `1234-567-8901`. The device makes it the first time it starts, and keeps it through factory resets and updates. Nobody else's device shares it.
+Each device has its own Matter setup code, an 11-digit number like `1234-567-8901`, and the matching QR code. Nobody else's device shares it. Which code it uses, first match wins:
 
-There's no sticker for it, so read it from the device before you pair. Either:
-- **In the flashing log.** Right after a UART flash, the serial monitor shows a line like `Matter setup code: 1234-567-8901 (made by this device, NEW on this boot)` at every start.
-- **On the Wi-Fi mode page.** Hold the button 5 s, join the `Shelly-…` network and read the code on the page (see [Updating](UPDATING.md#wi-fi-maintenance-mode)). Then press **Exit**: the device restarts with a 15-minute pairing window.
+1. **A code you entered** on the Wi-Fi mode page (below). A factory reset forgets it.
+2. **The code on the device's Shelly sticker.** Shelly stores it in a part of the flash this firmware only reads, so it survives the install, updates and factory resets. The sticker's 11-digit code works. Its QR code names Shelly as the maker, and some controllers may refuse a device that then reports this firmware's test vendor instead: if your app refuses the QR, type the 11-digit code. (Not yet tested on hardware.)
+3. **A code the device made itself** the first time it started, if it found no sticker code. It's kept through factory resets and updates.
 
-**Use your own code instead.** On the same page you can enter the 11-digit code from the Shelly sticker (or any valid Matter code), or make a new random one. It is only saved once you press the device's button 3 times within 2 minutes, so someone else on the open network can't change it. Enter the 11-digit number, not the sticker's QR code: the QR names Shelly as the maker, and some controllers refuse a device that reports a different one.
+To read the code in use:
+- **In the flashing log.** The serial monitor shows a line like `Matter setup code: 1234-567-8901 (from the Shelly sticker)` at every start.
+- **On the Wi-Fi mode page.** Hold the button 5 s, join the `Shelly-…` network and read the code and its QR on the page (see [Updating](UPDATING.md#wi-fi-maintenance-mode)). Then press **Exit**: the device restarts with a 15-minute pairing window. When another code is in use, the page also shows the sticker's.
 
-**When the code changes on its own.** The device makes a new code whenever its settings memory is erased: after a full UART reflash, or if the settings memory was unusable and the device had to erase it. Both also remove the device from your controllers. The log and the page always show the current code.
+**Use another code.** On the same page you can enter any valid 11-digit Matter code, or make a new random one. Typing the sticker's own code goes back to it, with its QR. A change is only saved once you press the device's button 3 times within 2 minutes, so someone else on the open network can't change it. The page's QR follows the code in use: the sticker's own QR for the sticker code, otherwise a QR with this firmware's vendor.
+
+**When the code changes on its own.** A factory reset goes back to the sticker code if you had entered another. A device without a sticker code makes a new code whenever its settings memory is erased: after a full UART reflash, or if the settings memory was unusable and the device had to erase it. Both also remove the device from your controllers. The log and the page always show the current code.
 
 **When it's the shared test code instead.** In these cases the device uses the test code below, which every device running this firmware shares:
-- a build without Wi-Fi mode, which has no page to show another code;
+- a build without Wi-Fi mode, when the device has no sticker code;
 - if the device couldn't save its own code (it says so in the log and on the page, and tries again at the next start);
 - after an update rolls back to firmware older than this feature.
 

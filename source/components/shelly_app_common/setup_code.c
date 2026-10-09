@@ -19,6 +19,7 @@
 #include "setup_code.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define RECORD_MAGIC   0x444F4353u // 'SCOD'
@@ -211,4 +212,231 @@ bool setup_code_record_unpack(const uint8_t *in, size_t len, setup_code_t *out)
     out->discriminator = disc;
     out->source = source;
     return true;
+}
+
+// ---- The QR code payload ----
+
+static const char k_base38[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-.";
+
+#define QR_PREFIX      "MT:"
+#define QR_PAYLOAD_LEN 11 // 88 bits
+
+static int base38_value(char c)
+{
+    const char *p = strchr(k_base38, c);
+    return (p == NULL || c == '\0') ? -1 : (int)(p - k_base38);
+}
+
+// Base38 text to bytes: 5 characters make 3 bytes, 4 make 2, 2 make 1.
+// Returns the byte count, or -1.
+static int base38_decode(const char *text, uint8_t *out, size_t out_len)
+{
+    size_t len = strlen(text), n = 0;
+    for (size_t i = 0; i < len;) {
+        size_t chars = len - i >= 5 ? 5 : len - i;
+        size_t bytes = chars == 5 ? 3 : chars == 4 ? 2 : chars == 2 ? 1 : 0;
+        if (bytes == 0 || n + bytes > out_len) {
+            return -1;
+        }
+        uint32_t v = 0;
+        for (size_t k = chars; k-- > 0;) {
+            int d = base38_value(text[i + k]);
+            if (d < 0) {
+                return -1;
+            }
+            v = v * 38u + (uint32_t)d;
+        }
+        if (v >> (8 * bytes) != 0) {
+            return -1;
+        }
+        for (size_t k = 0; k < bytes; k++) {
+            out[n++] = (uint8_t)(v >> (8 * k));
+        }
+        i += chars;
+    }
+    return (int)n;
+}
+
+static size_t base38_encode(const uint8_t *in, size_t len, char *out)
+{
+    size_t n = 0;
+    for (size_t i = 0; i < len;) {
+        size_t bytes = len - i >= 3 ? 3 : len - i;
+        size_t chars = bytes == 3 ? 5 : bytes == 2 ? 4 : 2;
+        uint32_t v = 0;
+        for (size_t k = 0; k < bytes; k++) {
+            v |= (uint32_t)in[i + k] << (8 * k);
+        }
+        for (size_t k = 0; k < chars; k++) {
+            out[n++] = k_base38[v % 38u];
+            v /= 38u;
+        }
+        i += bytes;
+    }
+    out[n] = '\0';
+    return n;
+}
+
+// The payload's fields, least significant bit first.
+static uint32_t take_bits(const uint8_t *b, unsigned *pos, unsigned count)
+{
+    uint32_t v = 0;
+    for (unsigned i = 0; i < count; i++, (*pos)++) {
+        v |= (uint32_t)((b[*pos / 8] >> (*pos % 8)) & 1u) << i;
+    }
+    return v;
+}
+
+static void put_bits(uint8_t *b, unsigned *pos, uint32_t v, unsigned count)
+{
+    for (unsigned i = 0; i < count; i++, (*pos)++) {
+        if ((v >> i) & 1u) {
+            b[*pos / 8] |= (uint8_t)(1u << (*pos % 8));
+        }
+    }
+}
+
+bool setup_code_qr_decode(const char *text, setup_code_qr_t *out)
+{
+    if (text == NULL || strncmp(text, QR_PREFIX, 3) != 0) {
+        return false;
+    }
+    uint8_t b[(SETUP_CODE_QR_MAX * 3) / 5 + 3];
+    int n = base38_decode(text + 3, b, sizeof(b));
+    if (n < QR_PAYLOAD_LEN) {
+        return false;
+    }
+    unsigned pos = 0;
+    setup_code_qr_t q;
+    q.version = (uint8_t)take_bits(b, &pos, 3);
+    q.vendor_id = (uint16_t)take_bits(b, &pos, 16);
+    q.product_id = (uint16_t)take_bits(b, &pos, 16);
+    q.flow = (uint8_t)take_bits(b, &pos, 2);
+    q.capabilities = (uint8_t)take_bits(b, &pos, 8);
+    q.discriminator = (uint16_t)take_bits(b, &pos, 12);
+    q.passcode = take_bits(b, &pos, 27);
+    if (q.version != 0 || !setup_code_passcode_valid(q.passcode)) {
+        return false;
+    }
+    *out = q;
+    return true;
+}
+
+bool setup_code_qr_encode(const setup_code_qr_t *in, char out[SETUP_CODE_QR_LEN])
+{
+    if (in->version != 0 || in->flow > 3u || in->discriminator > SETUP_CODE_DISCRIMINATOR_MAX ||
+        !setup_code_passcode_valid(in->passcode)) {
+        return false;
+    }
+    uint8_t b[QR_PAYLOAD_LEN] = {0};
+    unsigned pos = 0;
+    put_bits(b, &pos, in->version, 3);
+    put_bits(b, &pos, in->vendor_id, 16);
+    put_bits(b, &pos, in->product_id, 16);
+    put_bits(b, &pos, in->flow, 2);
+    put_bits(b, &pos, in->capabilities, 8);
+    put_bits(b, &pos, in->discriminator, 12);
+    put_bits(b, &pos, in->passcode, 27);
+    memcpy(out, QR_PREFIX, 3);
+    base38_encode(b, sizeof(b), out + 3);
+    return true;
+}
+
+// ---- The sticker code ----
+
+static int base64_value(char c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+
+// Standard base64 of exactly len characters (padded). Returns the byte
+// count, or -1.
+static int base64_decode(const char *text, size_t len, uint8_t *out, size_t out_len)
+{
+    if (len == 0 || len % 4 != 0) {
+        return -1;
+    }
+    size_t n = 0;
+    for (size_t i = 0; i < len; i += 4) {
+        uint32_t v = 0;
+        int pad = 0;
+        for (size_t k = 0; k < 4; k++) {
+            char c = text[i + k];
+            int d;
+            if (c == '=' && i + 4 == len && k >= 2) {
+                d = 0;
+                pad++;
+            } else if (pad != 0 || (d = base64_value(c)) < 0) {
+                return -1;
+            }
+            v = (v << 6) | (uint32_t)d;
+        }
+        size_t bytes = 3u - (size_t)pad;
+        if (n + bytes > out_len) {
+            return -1;
+        }
+        for (size_t k = 0; k < bytes; k++) {
+            out[n++] = (uint8_t)(v >> (16 - 8 * k));
+        }
+    }
+    return (int)n;
+}
+
+// "<salt base64>,<iterations>,<verifier base64>"
+static bool parse_verifier(const char *text, setup_code_sticker_t *out)
+{
+    const char *c1 = strchr(text, ',');
+    const char *c2 = c1 != NULL ? strchr(c1 + 1, ',') : NULL;
+    if (c2 == NULL || strchr(c2 + 1, ',') != NULL) {
+        return false;
+    }
+    int salt_len = base64_decode(text, (size_t)(c1 - text), out->salt, sizeof(out->salt));
+    if (salt_len < 16) {
+        return false;
+    }
+    char *end = NULL;
+    unsigned long iterations = strtoul(c1 + 1, &end, 10);
+    if (end != c2 || c1 + 1 == c2 || iterations < 1000u || iterations > 100000u) {
+        return false;
+    }
+    if (base64_decode(c2 + 1, strlen(c2 + 1), out->verifier, sizeof(out->verifier)) != SETUP_CODE_VERIFIER_LEN) {
+        return false;
+    }
+    out->salt_len = (uint8_t)salt_len;
+    out->iterations = (uint32_t)iterations;
+    return true;
+}
+
+bool setup_code_sticker_parse(const char *qr, const char *manual, const char *verifier, setup_code_sticker_t *out)
+{
+    setup_code_qr_t q;
+    uint32_t passcode;
+    uint8_t short_disc;
+    if (qr == NULL || strlen(qr) >= SETUP_CODE_QR_MAX || !setup_code_qr_decode(qr, &q) ||
+        setup_code_manual_parse(manual, &passcode, &short_disc) != SETUP_CODE_OK || passcode != q.passcode ||
+        short_disc != (q.discriminator >> 8)) {
+        return false;
+    }
+    memset(out, 0, sizeof(*out));
+    out->code.passcode = q.passcode;
+    out->code.discriminator = q.discriminator;
+    out->code.source = SETUP_CODE_SOURCE_STICKER;
+    strcpy(out->qr, qr);
+    out->has_verifier = verifier != NULL && parse_verifier(verifier, out);
+    if (!out->has_verifier) {
+        out->iterations = 0;
+        out->salt_len = 0;
+    }
+    return true;
+}
+
+bool setup_code_is_sticker(const setup_code_sticker_t *sticker, uint32_t passcode, uint8_t short_discriminator)
+{
+    return sticker != NULL && sticker->code.passcode == passcode &&
+           (sticker->code.discriminator >> 8) == short_discriminator;
 }

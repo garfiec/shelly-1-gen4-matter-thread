@@ -99,7 +99,7 @@ Every gesture in every state. A refused action shows three quick flashes (LED-14
 | B-25 | Wi-Fi mode, change waiting | Tap | Toggle, without Matter | As B-21. The change keeps waiting |
 | B-26 | Wi-Fi mode, change waiting | 3+ taps | Save the change | The setup code, wall-switch mode or meter calibration chosen on the page (see [Save the change](#what-each-action-does)) is saved. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
 | B-27 | Wi-Fi mode, change waiting | Hold 5-10 s | Exit Wi-Fi mode | The change is dropped; the old setting stays |
-| B-28 | Wi-Fi mode, change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the saved setup code, switch mode and meter calibration |
+| B-28 | Wi-Fi mode, change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the switch mode and meter calibration, and forgets a setup code you entered (see [Factory reset](#what-each-action-does)) |
 | B-29 | Booting | 2 taps | Refused | As B-01 |
 | B-30 | Normal | 2 taps | Toggle | Relay 2 on the 2PM; on other devices the same as a tap (relay 1) |
 | B-31 | First 60 s after an update | 2 taps | Toggle | As B-30 |
@@ -176,12 +176,12 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 
 **Exit Wi-Fi mode.** The device restarts into normal mode. The state the relay had in Wi-Fi mode becomes its previous state, and the relay then follows its power-on setting from there (see below): with Previous it keeps that state, and controllers see it once Matter is back.
 
-**Factory reset.** Clears the Matter pairings and the Thread network, then restarts ready to pair (LED-02). The device's setup code stays the same.
+**Factory reset.** Clears the Matter pairings and the Thread network, then restarts ready to pair (LED-02). A setup code you entered on the Wi-Fi mode page is forgotten: the device goes back to the code on its Shelly sticker, or to the code it made itself if it has no sticker code (see [Commissioning](COMMISSIONING.md#your-setup-code)).
 - The firmware stays installed. This is not a return to stock firmware: see [Reversibility](REVERSIBILITY.md).
 - **1PM:** the learned mains voltage is cleared too. The energy total is kept.
 - An overcurrent trip survives the reset. The first On from the new controller, or a tap, clears it.
 
-**Save the change.** On the Wi-Fi mode page you can change these settings: the Matter setup code (enter your own 11-digit code, for example the one on the Shelly sticker, or make a new random one; see [Commissioning](COMMISSIONING.md#your-setup-code)); on the Light, Outlet, Mini, 1PM and 2PM, the [wall switch mode](#wall-switch-modes) (on the 2PM, SW1's and SW2's separately); and on the 1PM and 2PM, the meter calibration (see [Protection and Metering](PROTECTION.md#calibrating-the-meter)). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code applies from the next normal boot; a new switch mode or calibration applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
+**Save the change.** On the Wi-Fi mode page you can change these settings: the Matter setup code (enter another 11-digit code, or make a new random one; typing the Shelly sticker's code goes back to it; see [Commissioning](COMMISSIONING.md#your-setup-code)); on the Light, Outlet, Mini, 1PM and 2PM, the [wall switch mode](#wall-switch-modes) (on the 2PM, SW1's and SW2's separately); and on the 1PM and 2PM, the meter calibration (see [Protection and Metering](PROTECTION.md#calibrating-the-meter)). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code applies from the next normal boot; a new switch mode or calibration applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
 
 **Factory reset after a restart.** The device records the request, restarts, and resets as soon as Matter is up. If Matter never starts, the reset does not happen; reflash over UART.
 

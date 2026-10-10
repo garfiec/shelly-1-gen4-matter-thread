@@ -19,6 +19,7 @@
 #include "shelly_settings.h"
 
 #include <pthread.h>
+#include <string.h>
 
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -30,6 +31,7 @@
 #include "shelly_app.h"
 #include "shelly_calibration.h"
 #include "shelly_setup_code.h"
+#include "shelly_wifi_password.h"
 
 static const char *TAG = "settings";
 
@@ -49,6 +51,7 @@ static volatile bool s_loaded = false;
 
 static shelly_change_t s_change;
 static int64_t s_change_at_us = 0;
+static uint32_t s_saved_count = 0;
 
 void shelly_settings_init(void)
 {
@@ -165,10 +168,23 @@ bool shelly_cal_stage(int ch, const cal_ratios_t *ratios)
     return true;
 }
 
+bool shelly_wifi_password_stage(const char *password)
+{
+    if (password[0] != '\0' && !wifi_password_valid(password)) {
+        return false;
+    }
+    shelly_change_t change = {};
+    change.kind = SHELLY_CHANGE_WIFI_PASSWORD;
+    strcpy(change.wifi_password, password);
+    shelly_change_stage(&change);
+    return true;
+}
+
 void shelly_change_cancel(void)
 {
     pthread_mutex_lock(&s_lock);
     s_change.kind = SHELLY_CHANGE_NONE;
+    memset(s_change.wifi_password, 0, sizeof(s_change.wifi_password));
     pthread_mutex_unlock(&s_lock);
 }
 
@@ -213,14 +229,30 @@ bool shelly_change_confirm(void)
         case SHELLY_CHANGE_CALIBRATION:
             ok = shelly_cal_save(&s_change.cal);
             break;
+        case SHELLY_CHANGE_WIFI_PASSWORD:
+            ok = shelly_wifi_password_save(s_change.wifi_password);
+            break;
         case SHELLY_CHANGE_NONE:
         default:
             break;
         }
         if (ok) {
             s_change.kind = SHELLY_CHANGE_NONE;
+            s_saved_count++;
         }
+    }
+    // Don't keep a password in memory longer than needed.
+    if (s_change.kind == SHELLY_CHANGE_NONE) {
+        memset(s_change.wifi_password, 0, sizeof(s_change.wifi_password));
     }
     pthread_mutex_unlock(&s_lock);
     return ok;
+}
+
+uint32_t shelly_change_saved_count(void)
+{
+    pthread_mutex_lock(&s_lock);
+    uint32_t n = s_saved_count;
+    pthread_mutex_unlock(&s_lock);
+    return n;
 }

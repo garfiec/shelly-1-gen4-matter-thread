@@ -5,13 +5,13 @@ menu "Shelly Wi-Fi maintenance mode"
         default y
         help
             Holding the button 5 s restarts the device into a boot of its own
-            with Matter and Thread off: it runs an open Wi-Fi network and a
+            with Matter and Thread off: it runs a WPA2/WPA3 Wi-Fi network and a
             web page at 192.168.33.1 that installs a firmware update (the
             Matter .ota file). See docs/BUTTON-AND-LED.md and docs/UPDATING.md.
             Without it, the 5 s hold is refused.
 
     config SHELLY_MAINTENANCE_IDLE_TIMEOUT_S
-        int "Return to normal after this long with the page closed (s)"
+        int "Return to normal after this long with no page open (s)"
         depends on SHELLY_MAINTENANCE
         default 600
         range 60 3600
@@ -25,7 +25,8 @@ menu "Shelly Wi-Fi maintenance mode"
             one of the stock regions this firmware never uses (shelly, fs_0,
             fs_1, zb_storage), to study what Shelly stores there, such as
             factory calibration. Never this firmware's own nvs. The shelly
-            partition may hold the device's own keys and the Wi-Fi mode
-            network is open, so this is for boards being brought up only.
+            partition may hold the device's own keys and anyone who joins the
+            Wi-Fi mode network could download it, so this is for boards
+            being brought up only.
 
 endmenu

@@ -28,6 +28,7 @@
 #include "maintenance_dns.h"
 #include "maintenance_image.h"
 #include "qr_svg.h"
+#include "wifi_password.h"
 
 static int s_failures = 0;
 static int s_checks = 0;
@@ -303,11 +304,37 @@ static void test_qr_svg(void)
     CHECK(!qr_svg_write(big, svg_emit, &s) && s.pieces == 0);
 }
 
+static void test_wifi_password(void)
+{
+    CHECK(wifi_password_valid("12345678"));
+    CHECK(!wifi_password_valid("1234567"));
+    CHECK(wifi_password_valid("correct horse battery staple ~!@#$%^&*()"));
+    char max[WIFI_PASSWORD_MAX + 2];
+    memset(max, 'a', sizeof(max) - 1);
+    max[WIFI_PASSWORD_MAX] = '\0';
+    CHECK(wifi_password_valid(max));
+    max[WIFI_PASSWORD_MAX] = 'a';
+    max[WIFI_PASSWORD_MAX + 1] = '\0';
+    CHECK(!wifi_password_valid(max)); // 64: WPA reads that as a raw key
+    CHECK(!wifi_password_valid("caf\xc3\xa9 password")); // not ASCII
+    CHECK(!wifi_password_valid("tab\there12"));
+    CHECK(!wifi_password_valid(NULL));
+
+    char out[12];
+    CHECK(wifi_password_from_code_text("2058-491-0137", out) && strcmp(out, "20584910137") == 0);
+    CHECK(wifi_password_from_code_text("20584910137", out) && strcmp(out, "20584910137") == 0);
+    CHECK(!wifi_password_from_code_text("2058-491-013", out));
+    CHECK(!wifi_password_from_code_text("2058-491-01370", out));
+    CHECK(!wifi_password_from_code_text("2058 491 0137", out));
+    CHECK(wifi_password_valid("20584910137"));
+}
+
 int main(void)
 {
     test_image();
     test_dns();
     test_qr_svg();
+    test_wifi_password();
     printf("%d maintenance checks, %d failures\n", s_checks, s_failures);
     return s_failures == 0 ? 0 : 1;
 }

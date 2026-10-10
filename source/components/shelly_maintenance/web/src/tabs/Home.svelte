@@ -4,6 +4,7 @@
   import Message from '../lib/Message.svelte';
   import { app, kick, say } from '../lib/store.svelte';
   import { num } from '../lib/format';
+  import WifiPassword from '../lib/WifiPassword.svelte';
 
   const s = $derived(app.state!);
   const two = $derived(s.caps.relays > 1);
@@ -55,12 +56,16 @@
 <Card title="About Wi-Fi mode">
   <p class="muted small">
     Matter and Thread are off while the device is in this mode. It goes back to normal after an update, when you
-    press <b>Exit</b>, on another 5 s hold of its button, or after 10 minutes with this page closed.
+    press <b>Exit</b>, on another 5 s hold of its button, or after 10 minutes with no page open.
   </p>
   <p class="muted small" style="margin:0">
-    This network is open: anyone nearby can use this page while the mode is on.
+    {s.wifi.now === 'open'
+      ? 'This network is open: anyone nearby can use this page while the mode is on.'
+      : 'Anyone who has the network password can use this page while the mode is on.'}
   </p>
 </Card>
+
+<WifiPassword />
 
 <style>
   .relay { display: flex; align-items: center; gap: 12px; padding: 6px 0; }

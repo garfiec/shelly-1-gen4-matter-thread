@@ -54,7 +54,7 @@
   </div>
   <p class="muted small help">
     Scan the QR or type the code in your Matter app once you exit this mode. {resetNote}
-    Anyone near this open network can see it while the mode is on.
+    Anyone who joins this network can see it while the mode is on.
   </p>
 </Card>
 

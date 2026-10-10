@@ -97,7 +97,7 @@ Every gesture in every state. A refused action shows three quick flashes (LED-14
 | B-23 | Wi-Fi maintenance mode | Hold 5-10 s | Exit Wi-Fi mode | The same gesture that entered it. An upload in progress is abandoned; nothing is installed |
 | B-24 | Wi-Fi maintenance mode | Hold 10-20 s | Factory reset after a restart | The device restarts into normal mode and resets once Matter starts. An upload in progress is abandoned |
 | B-25 | Wi-Fi mode, change waiting | Tap | Toggle, without Matter | As B-21. The change keeps waiting |
-| B-26 | Wi-Fi mode, change waiting | 3+ taps | Save the change | The setup code, wall-switch mode or meter calibration chosen on the page (see [Save the change](#what-each-action-does)) is saved. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
+| B-26 | Wi-Fi mode, change waiting | 3+ taps | Save the change | The setup code, wall-switch mode, Wi-Fi mode password or meter calibration chosen on the page (see [Save the change](#what-each-action-does)) is saved. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
 | B-27 | Wi-Fi mode, change waiting | Hold 5-10 s | Exit Wi-Fi mode | The change is dropped; the old setting stays |
 | B-28 | Wi-Fi mode, change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the switch mode and meter calibration, and forgets a setup code you entered (see [Factory reset](#what-each-action-does)) |
 | B-29 | Booting | 2 taps | Refused | As B-01 |
@@ -168,9 +168,9 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 - **A window already open** restarts with its full time, unless a controller opened it with its own pairing code (Share device, for example): that window is left as it is, so the code the controller shows keeps working.
 - **Refused** while someone is part-way through pairing, so their session is not cut off.
 
-**Enter Wi-Fi mode** (experimental). The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own open Wi-Fi network named like stock Shelly's, `Shelly<model>-<the MAC on the sticker>`, and the page at `http://192.168.33.1` installs a firmware update and shows the device's Matter setup code. See [Updating](UPDATING.md#wi-fi-maintenance-mode).
+**Enter Wi-Fi mode** (experimental). The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own Wi-Fi network named like stock Shelly's, `Shelly<model>-<the MAC on the sticker>`, with the sticker's setup code as its password (see [Wi-Fi mode password](UPDATING.md#wi-fi-mode-password)), and the page at `http://192.168.33.1` installs a firmware update and shows the device's Matter setup code. See [Updating](UPDATING.md#wi-fi-maintenance-mode).
 - The relay keeps its state across the restart, apart from a brief off while it reboots. The Opener's trigger always stays off.
-- The mode ends after an upload, on the page's Exit button, with the 5 s hold again, or after 10 minutes with the page closed.
+- The mode ends after an upload, on the page's Exit button, with the 5 s hold again, or after 10 minutes with no page open.
 - Home Assistant shows the device as unavailable until it is back in normal mode.
 - If the mode cannot start (the network or the page fails), the device flashes refusal and restarts normally.
 
@@ -181,7 +181,7 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 - **1PM:** the learned mains voltage is cleared too. The energy total is kept.
 - An overcurrent trip survives the reset. The first On from the new controller, or a tap, clears it.
 
-**Save the change.** On the Wi-Fi mode page you can change these settings: the Matter setup code (enter another 11-digit code, or make a new random one; typing the Shelly sticker's code goes back to it; see [Commissioning](COMMISSIONING.md#your-setup-code)); on the Light, Outlet, Mini, 1PM and 2PM, the [wall switch mode](#wall-switch-modes) (on the 2PM, SW1's and SW2's separately); and on the 1PM and 2PM, the meter calibration (see [Protection and Metering](PROTECTION.md#calibrating-the-meter)). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code applies from the next normal boot; a new switch mode or calibration applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
+**Save the change.** On the Wi-Fi mode page you can change these settings: the Matter setup code (enter another 11-digit code, or make a new random one; typing the Shelly sticker's code goes back to it; see [Commissioning](COMMISSIONING.md#your-setup-code)); on the Light, Outlet, Mini, 1PM and 2PM, the [wall switch mode](#wall-switch-modes) (on the 2PM, SW1's and SW2's separately); the [Wi-Fi mode password](UPDATING.md#wi-fi-mode-password); and on the 1PM and 2PM, the meter calibration (see [Protection and Metering](PROTECTION.md#calibrating-the-meter)). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code applies from the next normal boot, a new Wi-Fi mode password the next time Wi-Fi mode starts; a new switch mode or calibration applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
 
 **Factory reset after a restart.** The device records the request, restarts, and resets as soon as Matter is up. If Matter never starts, the reset does not happen; reflash over UART.
 

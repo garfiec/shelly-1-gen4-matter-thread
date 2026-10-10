@@ -58,6 +58,7 @@
 #include <shelly_diag_log.h>
 #include <shelly_settings.h>
 #include <shelly_setup_code.h>
+#include <shelly_wifi_password.h>
 #include <status_led.h>
 
 static const char *TAG = "maintenance";
@@ -98,6 +99,9 @@ static volatile uint32_t s_last_activity_ms = 0;
 static volatile bool s_uploading = false;
 static volatile bool s_restart = false;
 static char s_mac[18];
+static char s_ssid[33];
+// What this boot's network uses: open if the password was refused.
+static shelly_wifi_security_t s_security = SHELLY_WIFI_OPEN;
 
 static uint32_t uptime_ms(void)
 {
@@ -213,19 +217,46 @@ static esp_err_t start_wifi(void)
     int n = snprintf((char *)ap_cfg.ap.ssid, sizeof(ap_cfg.ap.ssid), "Shelly%s-%02X%02X%02X%02X%02X%02X",
                      stock_model_name(), base[0], base[1], base[2], base[3], base[4], base[5]);
     ap_cfg.ap.ssid_len = (uint8_t)(n < (int)sizeof(ap_cfg.ap.ssid) ? n : (int)sizeof(ap_cfg.ap.ssid));
+    memcpy(s_ssid, ap_cfg.ap.ssid, ap_cfg.ap.ssid_len);
+    s_ssid[ap_cfg.ap.ssid_len] = '\0';
     ap_cfg.ap.channel = AP_CHANNEL;
-    ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
     ap_cfg.ap.max_connection = AP_MAX_STATIONS;
+
+    // WPA2 and WPA3 together: WPA3 for the phones that have it, WPA2 for
+    // older ones (shelly_wifi_password.h says which password).
+    char password[WIFI_PASSWORD_MAX + 1];
+    s_security = shelly_wifi_password_choose(password);
+    if (s_security != SHELLY_WIFI_OPEN) {
+        strcpy((char *)ap_cfg.ap.password, password);
+        ap_cfg.ap.authmode = WIFI_AUTH_WPA2_WPA3_PSK;
+        ap_cfg.ap.pmf_cfg.required = false;
+        ap_cfg.ap.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+    } else {
+        ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
+    }
+    memset(password, 0, sizeof(password));
 
     err = esp_wifi_set_mode(WIFI_MODE_AP);
     if (err == ESP_OK) {
         err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
+        if (err != ESP_OK && s_security != SHELLY_WIFI_OPEN) {
+            // Never lock the way to reflash: an open network rather than none.
+            ESP_LOGE(TAG, "The password was refused (%s): the network is open this time", esp_err_to_name(err));
+            memset(ap_cfg.ap.password, 0, sizeof(ap_cfg.ap.password));
+            ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
+            s_security = SHELLY_WIFI_OPEN;
+            err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
+        }
     }
+    memset(ap_cfg.ap.password, 0, sizeof(ap_cfg.ap.password));
     if (err == ESP_OK) {
         err = esp_wifi_start();
     }
     if (err == ESP_OK) {
-        ESP_LOGI(TAG, "Maintenance network \"%s\" up at 192.168.33.1", (const char *)ap_cfg.ap.ssid);
+        ESP_LOGI(TAG, "Maintenance network \"%s\" up at 192.168.33.1, %s", s_ssid,
+                 s_security == SHELLY_WIFI_OWN       ? "with your own password"
+                 : s_security == SHELLY_WIFI_STICKER ? "with the sticker's setup code as its password"
+                                                     : "open");
     }
     return err;
 }
@@ -333,6 +364,11 @@ static void add_code_text(cJSON *obj, const char *name, const setup_code_t *code
     cJSON_AddStringToObject(obj, name, t);
 }
 
+static const char *wifi_security_name(shelly_wifi_security_t sec)
+{
+    return sec == SHELLY_WIFI_OWN ? "own" : sec == SHELLY_WIFI_STICKER ? "sticker" : "open";
+}
+
 // GET /api/state: everything the page shows, and what this build has.
 static esp_err_t state_get(httpd_req_t *req)
 {
@@ -384,6 +420,17 @@ static esp_err_t state_get(httpd_req_t *req)
         cJSON_AddNullToObject(c, "sticker");
     }
 
+    // The network: this boot's, and what the next Wi-Fi mode will use. The
+    // password itself is never sent.
+    char next_password[WIFI_PASSWORD_MAX + 1];
+    shelly_wifi_security_t next = shelly_wifi_password_choose(next_password);
+    memset(next_password, 0, sizeof(next_password));
+    cJSON *w = cJSON_AddObjectToObject(root, "wifi");
+    cJSON_AddStringToObject(w, "ssid", s_ssid);
+    cJSON_AddStringToObject(w, "now", wifi_security_name(s_security));
+    cJSON_AddStringToObject(w, "next", wifi_security_name(next));
+    cJSON_AddNumberToObject(root, "saves", shelly_change_saved_count());
+
     // A change waiting for 3 presses (B-26).
     shelly_change_t change;
     uint32_t secs_left = 0;
@@ -394,6 +441,9 @@ static esp_err_t state_get(httpd_req_t *req)
             cJSON_AddStringToObject(p, "kind", "code");
             add_code_text(p, "value", &change.code);
             sticker_back = change.code.source == SETUP_CODE_SOURCE_STICKER;
+        } else if (change.kind == SHELLY_CHANGE_WIFI_PASSWORD) {
+            cJSON_AddStringToObject(p, "kind", "wifi");
+            cJSON_AddStringToObject(p, "value", change.wifi_password[0] != '\0' ? "own" : "default");
         } else if (change.kind == SHELLY_CHANGE_CALIBRATION) {
             cJSON_AddStringToObject(p, "kind", "cal");
             cJSON_AddStringToObject(p, "value", cal_ratios_is_default(&change.cal) ? "default" : "new");
@@ -401,7 +451,8 @@ static esp_err_t state_get(httpd_req_t *req)
             cJSON_AddStringToObject(p, "kind", "switch");
             cJSON_AddStringToObject(p, "value", ui_switch_mode_name(change.switch_mode));
         }
-        cJSON_AddNumberToObject(p, "ch", change.kind == SHELLY_CHANGE_SETUP_CODE ? 0 : change.channel + 1);
+        bool per_channel = change.kind == SHELLY_CHANGE_SWITCH_MODE || change.kind == SHELLY_CHANGE_CALIBRATION;
+        cJSON_AddNumberToObject(p, "ch", per_channel ? change.channel + 1 : 0);
         cJSON_AddNumberToObject(p, "secs", secs_left);
         cJSON_AddBoolToObject(p, "sticker", sticker_back);
     } else {
@@ -792,6 +843,19 @@ static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
         return stage_cal_reset(req);
     }
 #endif
+    if (strcmp(key, "wifi.password") == 0) {
+        // "" would stage the default: that has its own key.
+        const char *value = json_str(body, "value");
+        if (value[0] == '\0' || !shelly_wifi_password_stage(value)) {
+            return send_result(req, "400 Bad Request", false,
+                               "Use 8 to 63 characters: letters, digits, spaces and symbols, without accents or emoji");
+        }
+        return send_result(req, "200 OK", true, "");
+    }
+    if (strcmp(key, "wifi.password.default") == 0) {
+        shelly_wifi_password_stage("");
+        return send_result(req, "200 OK", true, "");
+    }
     if (strcmp(key, "cancel") == 0) {
         shelly_change_cancel();
         return send_result(req, "200 OK", true, "");

@@ -73,7 +73,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button:disabled { opacity: 0.5; cursor: default; }
 button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-input[type='text'] {
+input[type='text'],
+input[type='password'] {
   font: inherit;
   width: 100%;
   padding: 10px 12px;

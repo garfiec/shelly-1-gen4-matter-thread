@@ -2,6 +2,7 @@
 // be worked on without hardware. Never part of the build.
 //
 //   /__mock?d=2pm       pick a device: light, mini, 1pm, 2pm, 2pm-skipped
+//                       (the Mini has no sticker code: its Wi-Fi network is open)
 //   /__mock/press       the 3 button presses that save a waiting change
 //   /__mock/offline     stop answering for 10 s (a restart)
 
@@ -29,6 +30,14 @@ let code = { text: STICKER, source: 'sticker', new: false };
 let custom = false;
 let pending: null | { kind: string; value: string; ch: number; until: number; sticker: boolean; apply: () => void } = null;
 let offlineUntil = 0;
+// The owner's own Wi-Fi mode password, and what this boot's network uses.
+let wifiOwn = '';
+let wifiNow: string | null = null;
+
+function wifiNext() {
+  return wifiOwn ? 'own' : dev === 'mini' ? 'open' : 'sticker';
+}
+let saves = 0;
 
 function state() {
   const d = DEVICES[dev];
@@ -38,7 +47,9 @@ function state() {
     caps: { relays: d.relays, switch_modes: true, meter: d.meter, meter_skipped: !!d.skipped, diag: true, hw: true },
     relays: relays.slice(0, d.relays),
     switch: modes.slice(0, d.relays),
-    code: { ...code, sticker: STICKER },
+    code: dev === 'mini' ? { text: '3184-207-5562', source: 'generated', new: false, sticker: null } : { ...code, sticker: STICKER },
+    wifi: { ssid: `Shelly${d.hw.replace(/^S/, '').replace('Mini1G4', '1MiniG4')}-020000123456`, now: (wifiNow ??= wifiNext()), next: wifiNext() },
+    saves,
     pending: pending && {
       kind: pending.kind,
       value: pending.value,
@@ -121,11 +132,13 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   if (p === '/__mock') {
     const d = url.searchParams.get('d') as Dev;
     if (d in DEVICES) dev = d;
+    wifiNow = null;
     res.statusCode = 302;
     res.setHeader('Location', '/');
     return res.end();
   }
   if (p === '/__mock/press') {
+    if (pending) saves++;
     pending?.apply();
     pending = null;
     return json(res, ok);
@@ -194,6 +207,16 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
         return json(res, ok);
       case 'cal.reset':
         stage('cal', 'default', 1, () => (custom = false));
+        return json(res, ok);
+      case 'wifi.password': {
+        const v = String(b.value ?? '');
+        if (!/^[\x20-\x7e]{8,63}$/.test(v))
+          return json(res, { ok: false, msg: 'Use 8 to 63 characters: letters, digits, spaces and symbols, without accents or emoji' }, 400);
+        stage('wifi', 'own', 0, () => (wifiOwn = v));
+        return json(res, ok);
+      }
+      case 'wifi.password.default':
+        stage('wifi', 'default', 0, () => (wifiOwn = ''));
         return json(res, ok);
       case 'cancel':
         pending = null;

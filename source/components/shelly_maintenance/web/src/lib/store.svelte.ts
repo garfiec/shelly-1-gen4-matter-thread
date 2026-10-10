@@ -43,7 +43,7 @@ export const app = $state({
   done: '' as '' | 'exit' | 'installed',
   // The firmware upload, kept here so switching tabs doesn't lose it. pct -1: none.
   up: { pct: -1, msg: '', kind: '' as MsgKind },
-  msgs: { code: blank(), switch1: blank(), switch2: blank(), cal: blank(), relay: blank() } as Record<string, Msg>,
+  msgs: { code: blank(), switch1: blank(), switch2: blank(), cal: blank(), relay: blank(), wifi: blank() } as Record<string, Msg>,
 });
 
 function blank(): Msg {
@@ -69,12 +69,12 @@ function fromHash() {
 
 // ---- A change waiting for 3 presses: when it goes away, say whether it was saved
 
-let waiting: (Pending & { cal: string }) | null = null;
+let waiting: (Pending & { cal: string; saves: number }) | null = null;
 
 function settle(s: State) {
   const p = s.pending;
   if (p) {
-    waiting = { ...p, cal: app.meter ? JSON.stringify(app.meter.cal) : '' };
+    waiting = { ...p, cal: app.meter ? JSON.stringify(app.meter.cal) : '', saves: s.saves };
     return;
   }
   if (!waiting) return;
@@ -88,6 +88,9 @@ function settle(s: State) {
     const slot = w.ch === 2 ? 'switch2' : 'switch1';
     if (now === w.value) say(slot, `Saved: ${MODE_NAMES[now]}.`, 'good');
     else say(slot, `The change was not saved. The switch is still ${MODE_NAMES[now] ?? now}.`, 'bad');
+  } else if (w.kind === 'wifi') {
+    if (s.saves === w.saves) say('wifi', 'The change was not saved.', 'bad');
+    else say('wifi', 'Saved. It applies the next time Wi-Fi mode starts.', 'good');
   } else {
     getMeter()
       .then((m) => {

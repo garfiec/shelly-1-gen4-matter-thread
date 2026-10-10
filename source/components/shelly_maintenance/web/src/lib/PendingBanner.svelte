@@ -9,6 +9,12 @@
   const what = $derived.by(() => {
     if (!p) return '';
     if (p.kind === 'code') return p.sticker ? 'Back to the sticker code' : `New setup code ${p.value}`;
+    if (p.kind === 'wifi')
+      return p.value === 'own'
+        ? 'New Wi-Fi mode password'
+        : s?.code.sticker
+          ? 'Wi-Fi mode password back to the sticker code'
+          : 'No Wi-Fi mode password: an open network';
     if (p.kind === 'cal')
       return p.value === 'default'
         ? 'Back to the built-in meter calibration'
@@ -18,12 +24,15 @@
   const when = $derived(
     p?.kind === 'code'
       ? 'The new code applies once the device is back in normal operation.'
-      : 'It applies as soon as you press.',
+      : p?.kind === 'wifi'
+        ? 'It applies the next time Wi-Fi mode starts: this connection stays as it is.'
+        : 'It applies as soon as you press.',
   );
   const left = $derived(p ? `${Math.floor(p.secs / 60)}:${String(p.secs % 60).padStart(2, '0')}` : '');
 
   function cancel() {
-    const slot = p?.kind === 'switch' ? (p.ch === 2 ? 'switch2' : 'switch1') : p?.kind === 'cal' ? 'cal' : 'code';
+    const slot =
+      p?.kind === 'switch' ? (p.ch === 2 ? 'switch2' : 'switch1') : p?.kind === 'cal' || p?.kind === 'wifi' ? p.kind : 'code';
     set({ key: 'cancel' }).then((r) => {
       if (!r.ok) say(slot, r.msg, 'bad');
       kick();

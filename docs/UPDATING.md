@@ -100,7 +100,7 @@ While a Matter update downloads and installs, the status LED blinks slowly and e
 
 > **Experimental.** Built and unit-tested, not yet verified on hardware.
 
-Hold the device's button for 5 seconds and the device restarts into Wi-Fi maintenance mode. For as long as the mode lasts, Matter and Thread are off and the device runs its own open Wi-Fi network with an update page. It is the same idea as stock Shelly firmware's 5-second hold, and it uses the same address, `192.168.33.1`. Every gesture and LED pattern involved is in [Button, Switch and LED](BUTTON-AND-LED.md).
+Hold the device's button for 5 seconds and the device restarts into Wi-Fi maintenance mode. For as long as the mode lasts, Matter and Thread are off and the device runs its own Wi-Fi network with an update page, protected by a [password](#wi-fi-mode-password). It is the same idea as stock Shelly firmware's 5-second hold, and it uses the same address, `192.168.33.1`. Every gesture and LED pattern involved is in [Button, Switch and LED](BUTTON-AND-LED.md).
 
 The mode is a restart rather than a switch because Espressif does not support a Wi-Fi access point alongside a Thread router on the ESP32-C6. A boot of its own also leaves all of the device's memory to Wi-Fi and the upload.
 
@@ -121,7 +121,7 @@ The hold is refused (three quick flashes) within 60 seconds of an update, becaus
 
 ### 3. Upload
 
-1. On a phone or laptop, join the Wi-Fi network named like stock Shelly's, `Shelly<model>-<the 12-digit MAC on the sticker>`, for example `Shelly1PMG4-A1B2C3D4E5F6`. It is open, like stock Shelly's setup network: while the mode lasts, anyone within Wi-Fi range can use the page, switch the relay and install firmware built for this model. Enter the mode only when you are about to use it, and press **Exit** when you are done.
+1. On a phone or laptop, join the Wi-Fi network named like stock Shelly's, `Shelly<model>-<the 12-digit MAC on the sticker>`, for example `Shelly1PMG4-A1B2C3D4E5F6`. Its password is the [Matter setup code on the Shelly sticker](#wi-fi-mode-password), as 11 digits without the dashes, unless you set your own. A device without a sticker code runs an open network, like stock Shelly's setup network. Anyone who joins can use the page, switch the relay and install firmware built for this model, so enter the mode only when you are about to use it, and press **Exit** when you are done.
 2. The update page usually opens on its own. If not, browse to `http://192.168.33.1`. Your phone may warn that the network has no internet; that is expected. The window that opens on its own is the phone's sign-in window, which may not let you choose a file; if choosing the `.ota` does nothing, open `http://192.168.33.1` in your browser.
 3. The page has tabs: **Home** (the relays and the device's model, variant and firmware), **Pairing** (the [Matter setup code](#matter-setup-code)), **Switch**, **Meter**, **Update** and **Diagnostics**. Tabs a model doesn't have are hidden. On **Update**, choose the `.ota` file (on a computer you can also drag it onto the page) and press **Install**. The LED stays solid while the file uploads and installs.
 4. The device checks the file before erasing anything, installs it into its inactive slot, verifies it and restarts into it.
@@ -149,7 +149,16 @@ While the mode lasts:
 
 The page's **Pairing** tab shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. It shows its QR too, and the sticker's code when another is in use. To change it, enter another 11-digit code (the sticker's own goes back to it) or press **Make a new random code**, then press the device's button 3 times within 2 minutes. The LED gives one long flash and the page confirms. Until you press, nothing changes; after 2 minutes, on Cancel or when you leave the mode, the change is dropped. The new code applies once the device is back in normal operation. Your existing pairings keep working either way.
 
-The network is open, so anyone nearby can read the code while the mode is on. Changing it needs the button presses, which need the device in hand.
+Anyone who joins the network can read the code while the mode is on. Changing it needs the button presses, which need the device in hand.
+
+### Wi-Fi mode password
+
+The network uses WPA2 and WPA3 together: phones and laptops that have WPA3 use it, older ones WPA2. Its password, first match wins:
+1. **Your own**, set on the page's **Home** tab: 8 to 63 characters (letters, digits, spaces and symbols, no accents or emoji), saved with 3 presses of the device's button within 2 minutes, as for the setup code.
+2. **The setup code on the Shelly sticker**, as its 11 digits without the dashes: `2058-491-0137` becomes `20584910137`. It stays the sticker's code even if you pair with another setup code.
+3. **None** on a device whose sticker code can't be read (it then uses a code it made itself, which isn't printed anywhere): the network is open until you set your own.
+
+A new password applies the next time the mode starts, so the connection you are using stays up. The Home tab says what the next one will be; note it before you exit. A factory reset (hold 10-20 s) forgets your own password, so the device always comes back to a password printed on it, or to none: Wi-Fi mode is how you install firmware, and a forgotten password must never lock it. If the device can't start the network with its password, it starts it open rather than not at all, and the page says so.
 
 ### Wall switch mode
 

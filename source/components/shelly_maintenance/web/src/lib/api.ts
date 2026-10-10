@@ -4,9 +4,13 @@
 export type SwitchMode = 'toggle' | 'push' | 'follow' | 'disabled';
 export type CodeSource = 'sticker' | 'yours' | 'generated' | 'test';
 
+// The Wi-Fi mode network's password: the owner's own, the sticker's setup
+// code, or none (a device without a sticker code).
+export type WifiSecurity = 'own' | 'sticker' | 'open';
+
 export interface Pending {
-  kind: 'code' | 'switch' | 'cal';
-  // code: the new code; switch: the mode; cal: "new" or "default"
+  kind: 'code' | 'switch' | 'cal' | 'wifi';
+  // code: the new code; switch: the mode; cal: "new" or "default"; wifi: "own" or "default"
   value: string;
   ch: number; // 1-based relay, for switch and cal
   secs: number; // left to press the button 3 times
@@ -21,6 +25,10 @@ export interface State {
   switch: SwitchMode[];
   code: { text: string; source: CodeSource; new: boolean; sticker: string | null };
   pending: Pending | null;
+  // now: this boot's network; next: the next time Wi-Fi mode starts.
+  wifi: { ssid: string; now: WifiSecurity; next: WifiSecurity };
+  // Changes saved with 3 presses this boot.
+  saves: number;
 }
 
 export interface MeterChannel {
@@ -80,6 +88,8 @@ export type Setting =
   | { key: 'switch.mode'; ch: number; value: SwitchMode }
   | { key: 'cal'; ch: number; v: number | null; a: number | null; w: number | null }
   | { key: 'cal.reset' }
+  | { key: 'wifi.password'; value: string }
+  | { key: 'wifi.password.default' }
   | { key: 'cancel' };
 
 // Things that happen at once.

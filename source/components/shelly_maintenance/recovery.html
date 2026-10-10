@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Shelly firmware install</title>
+<style>
+body { margin: 0 auto; max-width: 30rem; padding: 16px; font: 16px/1.45 system-ui, sans-serif; }
+input, button, progress { display: block; width: 100%; margin: 10px 0; font: inherit; }
+label { display: flex; gap: 8px; }
+label input { width: auto; margin: 4px 0; }
+button { padding: 10px; }
+</style>
+</head>
+<body>
+<!-- Kept apart from the main page on purpose: no shared code, so a bug
+     there can't stop a firmware install here. -->
+<h1>Install firmware</h1>
+<p>The simple install page. Choose the <b>.ota</b> file for this device. <a href="/">Back to the full page</a></p>
+<input type="file" id="file" accept=".ota">
+<label><input type="checkbox" id="older"> Allow installing an older version</label>
+<button id="go">Install</button>
+<progress id="prog" max="100" value="0"></progress>
+<p id="msg"></p>
+<script>
+var $ = function (id) { return document.getElementById(id); };
+// Opening a page is what keeps the mode running (it ends after 10 minutes
+// with no page open): ask for the state now and then, ignoring the answer.
+setInterval(function () {
+  if ($('go').disabled) return;
+  var k = new XMLHttpRequest();
+  k.open('GET', '/api/state');
+  k.send();
+}, 60000);
+$('go').onclick = function () {
+  var f = $('file').files[0];
+  if (!f) { $('msg').textContent = 'Choose a file first.'; return; }
+  $('go').disabled = true;
+  $('msg').textContent = 'Uploading ' + f.name + '…';
+  var x = new XMLHttpRequest();
+  x.open('POST', '/update' + ($('older').checked ? '?allow_older=1' : ''));
+  x.upload.onprogress = function (e) { if (e.lengthComputable) $('prog').value = Math.round(100 * e.loaded / e.total); };
+  x.onload = function () {
+    var j; try { j = JSON.parse(x.responseText); } catch (e) { j = { ok: false, msg: 'Unexpected reply from the device' }; }
+    $('msg').textContent = j.msg;
+    if (!j.ok) $('go').disabled = false;
+  };
+  x.onerror = function () { $('go').disabled = false; $('msg').textContent = 'The upload was interrupted. Nothing was installed.'; };
+  x.send(f);
+};
+</script>
+</body>
+</html>

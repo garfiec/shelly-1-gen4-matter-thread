@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<!-- No favicon request: the device would answer it with a redirect to the whole page. -->
+<link rel="icon" href="data:,">
+<title>Shelly Wi-Fi mode</title>
+<style>
+  /* Shown until the app starts, and if it never does: plain HTML, no script needed. */
+  #boot { font: 16px/1.5 system-ui, sans-serif; max-width: 30rem; margin: 0 auto; padding: 24px 16px; }
+  #oops { display: none; position: sticky; top: 0; z-index: 99; margin: 0; padding: 10px 16px; background: #b3261e; color: #fff; font: 15px/1.4 system-ui, sans-serif; }
+  #oops a { color: #fff; font-weight: 600; }
+</style>
+</head>
+<body>
+<p id="oops" role="alert">Part of this page failed. <a href="/recovery">Use the simple install page</a> to install firmware.</p>
+<div id="boot">
+  <p>Loading the Shelly Wi-Fi mode page…</p>
+  <p>If nothing appears, <a href="/recovery">use the simple install page</a> to install firmware.</p>
+</div>
+<div id="app"></div>
+<script>
+  // Before the app's own script: if it fails to parse, throws, or the browser
+  // can't run it, this still shows the way to the simple install page.
+  (function () {
+    // Svelte calls String.replaceAll (Chrome 85, Safari 13.1); the build
+    // target lowers syntax only, not missing methods.
+    if (!String.prototype.replaceAll) {
+      String.prototype.replaceAll = function (p, r) {
+        return typeof p === 'string' ? this.split(p).join(r) : this.replace(p, r);
+      };
+    }
+    function oops() { document.getElementById('oops').style.display = 'block'; }
+    function failed() { window.__shellyFailed = true; oops(); }
+    window.addEventListener('error', failed);
+    window.addEventListener('unhandledrejection', failed);
+    window.__shellyWatchdog = setTimeout(oops, 4000);
+  })();
+</script>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -160,7 +160,7 @@ All values are also refreshed once a minute. Home Assistant shows power, voltage
 
 ## Calibrating the meter
 
-Every device ships with the calibration measured on a reference unit, so this is optional. To match your own plug-in meter (a Kill-A-Watt or similar), open the **Power meter** card in [Wi-Fi maintenance mode](UPDATING.md#wi-fi-maintenance-mode), which also shows the live readings:
+Every device ships with the calibration measured on a reference unit, so this is optional. To match your own plug-in meter (a Kill-A-Watt or similar), open the **Meter** tab in [Wi-Fi maintenance mode](UPDATING.md#wi-fi-maintenance-mode), which also shows the live readings:
 
 1. Plug a steady resistive load of at least 50 W (a space heater, a kettle or an incandescent bulb; not LED lights, chargers or motors) through your meter into the device's output, and turn that relay on. Keep it well under the rating: 10 A per relay on the 2PM.
 2. Wait a few seconds for the reading to settle, then enter what your meter shows: volts, amps and watts. Leave a box empty to keep that value as it is. On the 2PM, choose the relay first; voltage is shared by both relays, current and power are per relay.
@@ -173,7 +173,7 @@ The device works out the correction from its own last 5 seconds of readings, so 
 
 Without a watts value, power follows the voltage and current corrections. **Back to the built-in calibration** undoes it (also with 3 presses). The calibration is kept through firmware updates and factory resets: it describes the hardware, not the pairing. A firmware update with better built-in values keeps your unit's calibration as it was.
 
-Wi-Fi mode is how you install firmware, so a meter fault there must not lock you out of it: if a Wi-Fi mode boot stops unexpectedly (a crash, a hang, or the mode failing to start) while the meter runs, later Wi-Fi mode boots leave the meter off, and the card says so, until the next power cycle. Without the meter, overcurrent and overvoltage protection are off in those Wi-Fi mode boots, so the relays start off instead of returning to their state (you can still switch them on); over-temperature still runs. Metering and protection in normal operation are not affected. Not yet tested on hardware.
+Wi-Fi mode is how you install firmware, so a meter fault there must not lock you out of it: if a Wi-Fi mode boot stops unexpectedly (a crash, a hang, or the mode failing to start) while the meter runs, later Wi-Fi mode boots leave the meter off, and the Meter tab says so, until the next power cycle. Without the meter, overcurrent and overvoltage protection are off in those Wi-Fi mode boots, so the relays start off instead of returning to their state (you can still switch them on); over-temperature still runs. Metering and protection in normal operation are not affected. Not yet tested on hardware.
 
 ---
 

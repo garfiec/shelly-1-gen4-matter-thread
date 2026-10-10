@@ -48,7 +48,7 @@ Each device has its own Matter setup code, an 11-digit number like `1234-567-890
 
 To read the code in use:
 - **In the flashing log.** The serial monitor shows a line like `Matter setup code: 1234-567-8901 (from the Shelly sticker)` at every start.
-- **On the Wi-Fi mode page.** Hold the button 5 s, join the `Shelly…` network and read the code and its QR on the page (see [Updating](UPDATING.md#wi-fi-maintenance-mode)). Then press **Exit**: the device restarts with a 15-minute pairing window. When another code is in use, the page also shows the sticker's.
+- **On the Wi-Fi mode page.** Hold the button 5 s, join the `Shelly…` network and read the code and its QR on the page (see [Updating](UPDATING.md#wi-fi-maintenance-mode)). Then press **Exit** (twice: the second tap confirms): the device restarts with a 15-minute pairing window. When another code is in use, the page also shows the sticker's.
 
 **Use another code.** On the same page you can enter any valid 11-digit Matter code, or make a new random one. Typing the sticker's own code goes back to it, with its QR. A change is only saved once you press the device's button 3 times within 2 minutes, so someone else on the open network can't change it. The page's QR follows the code in use: the sticker's own QR for the sticker code, otherwise a QR with this firmware's vendor.
 

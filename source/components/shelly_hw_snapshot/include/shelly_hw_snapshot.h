@@ -20,7 +20,7 @@
 // for boards being brought up, like the 2PM). During a normal boot it
 // samples the relay and input pins, the button, the temperature sensors,
 // the heap and what the power meter's registers read, into memory that survives
-// the restart into Wi-Fi mode, where the page shows it (/hw.json). A line a
+// the restart into Wi-Fi mode, where the page shows it (/api/hw). A line a
 // minute also goes to the diagnostics log. A power cut clears it.
 //
 // Nothing here runs before Matter starts, and nothing writes to hardware:
@@ -60,7 +60,7 @@ void shelly_hw_snapshot_ade_cycle_done(bool dump);
 // A register stored so far.
 bool shelly_hw_snapshot_ade_get(uint16_t addr, uint32_t *value);
 
-// Wi-Fi mode: the JSON for /hw.json, the snapshot of the last normal boot
+// Wi-Fi mode: the JSON for /api/hw, the snapshot of the last normal boot
 // with what the pins read now. Returns the length needed (like snprintf).
 size_t shelly_hw_snapshot_json(char *buf, size_t len);
 

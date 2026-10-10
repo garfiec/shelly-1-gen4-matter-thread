@@ -1,0 +1,155 @@
+// What the page knows about the device, refreshed by polling: the state
+// every 2 s, the meter and hardware data only while a tab shows them.
+
+import { getHw, getMeter, getState, MODE_NAMES, type Hw, type Meter, type Pending, type State } from './api';
+
+export type MsgKind = '' | 'good' | 'bad';
+export interface Msg {
+  text: string;
+  kind: MsgKind;
+}
+
+export type TabId = 'home' | 'pairing' | 'switch' | 'meter' | 'update' | 'diag';
+
+export interface Tab {
+  id: TabId;
+  label: string;
+  shown: (s: State) => boolean;
+}
+
+export const TABS: Tab[] = [
+  { id: 'home', label: 'Home', shown: () => true },
+  { id: 'pairing', label: 'Pairing', shown: () => true },
+  { id: 'switch', label: 'Switch', shown: (s) => s.caps.switch_modes },
+  { id: 'meter', label: 'Meter', shown: (s) => s.caps.meter || s.caps.meter_skipped },
+  { id: 'update', label: 'Update', shown: () => true },
+  { id: 'diag', label: 'Diagnostics', shown: (s) => s.caps.diag || s.caps.hw },
+];
+
+const STATE_MS = 2000;
+const METER_MS = 2000;
+const HW_MS = 10000;
+
+export const app = $state({
+  state: null as State | null,
+  meter: null as Meter | null,
+  hw: null as Hw | null,
+  tab: 'home' as TabId,
+  // No reply to the last few polls: the device restarted or the phone left its network.
+  offline: false,
+  // An upload is running: polling pauses so it has the device to itself.
+  busy: false,
+  // Set once Exit or an install restarts the device: the page stops polling.
+  done: '' as '' | 'exit' | 'installed',
+  // The firmware upload, kept here so switching tabs doesn't lose it. pct -1: none.
+  up: { pct: -1, msg: '', kind: '' as MsgKind },
+  msgs: { code: blank(), switch1: blank(), switch2: blank(), cal: blank(), relay: blank() } as Record<string, Msg>,
+});
+
+function blank(): Msg {
+  return { text: '', kind: '' };
+}
+
+export function say(slot: string, text: string, kind: MsgKind = '') {
+  app.msgs[slot] = { text, kind };
+}
+
+// ---- Tabs, from the address's #hash, so Back works and a reload keeps the tab
+
+export function tabShown(id: TabId): boolean {
+  const t = TABS.find((x) => x.id === id);
+  return !!t && (!app.state || t.shown(app.state));
+}
+
+function fromHash() {
+  const id = location.hash.slice(1) as TabId;
+  app.tab = tabShown(id) ? id : 'home';
+  kick();
+}
+
+// ---- A change waiting for 3 presses: when it goes away, say whether it was saved
+
+let waiting: (Pending & { cal: string }) | null = null;
+
+function settle(s: State) {
+  const p = s.pending;
+  if (p) {
+    waiting = { ...p, cal: app.meter ? JSON.stringify(app.meter.cal) : '' };
+    return;
+  }
+  if (!waiting) return;
+  const w = waiting;
+  waiting = null;
+  if (w.kind === 'code') {
+    if (s.code.text === w.value) say('code', `Saved. Pair with ${s.code.text} once you exit.`, 'good');
+    else say('code', `The change was not saved. The code is still ${s.code.text}.`, 'bad');
+  } else if (w.kind === 'switch') {
+    const now = s.switch[w.ch - 1];
+    const slot = w.ch === 2 ? 'switch2' : 'switch1';
+    if (now === w.value) say(slot, `Saved: ${MODE_NAMES[now]}.`, 'good');
+    else say(slot, `The change was not saved. The switch is still ${MODE_NAMES[now] ?? now}.`, 'bad');
+  } else {
+    getMeter()
+      .then((m) => {
+        app.meter = m;
+        if (JSON.stringify(m.cal) === w.cal) say('cal', 'The calibration was not saved.', 'bad');
+        else say('cal', m.cal.custom ? 'Saved: the new calibration is in use.' : 'Saved: back to the built-in calibration.', 'good');
+      })
+      .catch(() => {});
+  }
+}
+
+// ---- Polling
+
+let misses = 0;
+let lastMeter = 0;
+let lastHw = 0;
+let timer: ReturnType<typeof setTimeout> | undefined;
+
+export async function refresh() {
+  if (app.busy || app.done) return;
+  try {
+    const s = await getState();
+    misses = 0;
+    app.offline = false;
+    app.state = s;
+    if (!tabShown(app.tab)) app.tab = 'home';
+    settle(s);
+  } catch {
+    if (++misses >= 3) app.offline = true;
+    return;
+  }
+  const now = Date.now();
+  const s = app.state;
+  if (s?.caps.meter && (app.tab === 'home' || app.tab === 'meter') && now - lastMeter >= METER_MS - 100) {
+    lastMeter = now;
+    getMeter().then((m) => (app.meter = m)).catch(() => {});
+  }
+  if (s?.caps.hw && app.tab === 'diag' && now - lastHw >= HW_MS - 100) {
+    lastHw = now;
+    getHw().then((h) => (app.hw = h)).catch(() => {});
+  }
+}
+
+// A kick while a poll is in flight starts a new chain: only the newest one
+// schedules the next poll, or each kick would add another 2 s loop.
+let chain = 0;
+function loop() {
+  clearTimeout(timer);
+  const mine = ++chain;
+  refresh().finally(() => {
+    if (mine === chain) timer = setTimeout(loop, STATE_MS);
+  });
+}
+
+// Refresh now (after an action, or on a tab change that needs other data).
+export function kick() {
+  lastHw = 0;
+  lastMeter = 0;
+  loop();
+}
+
+export function start() {
+  addEventListener('hashchange', fromHash);
+  fromHash();
+}

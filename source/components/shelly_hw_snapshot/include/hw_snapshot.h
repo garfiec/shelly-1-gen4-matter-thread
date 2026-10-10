@@ -19,7 +19,7 @@
 // The hardware snapshot's data and its text forms: what the board's pins,
 // sensors and power-meter chip read during the last normal boot, kept in
 // memory that survives the restart into Wi-Fi mode and shown there
-// (/hw.json). Pure C, no ESP-IDF includes, so the host tests cover it.
+// (/api/hw). Pure C, no ESP-IDF includes, so the host tests cover it.
 
 #pragma once
 
@@ -131,7 +131,7 @@ const char *hw_ade_state_name(uint8_t state);
 // Returns the length written (always NUL-terminated).
 size_t hw_snap_line(const hw_snap_t *s, char *buf, size_t len);
 
-// The JSON for /hw.json: {"live":{...},"last_boot":{...}|null}. live may be
+// The JSON for /api/hw: {"live":{...},"last_boot":{...}|null}. live may be
 // NULL. Returns the length it needs (like snprintf); compare with len.
 size_t hw_snap_json(const hw_snap_t *last_boot, const hw_live_t *live, char *buf, size_t len);
 

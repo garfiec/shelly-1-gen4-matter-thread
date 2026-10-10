@@ -1,0 +1,68 @@
+<script lang="ts">
+  import { MODE_NAMES, set, type SwitchMode } from './api';
+  import { app, kick, say } from './store.svelte';
+
+  const s = $derived(app.state);
+  const p = $derived(s?.pending ?? null);
+  const two = $derived((s?.caps.relays ?? 1) > 1);
+
+  const what = $derived.by(() => {
+    if (!p) return '';
+    if (p.kind === 'code') return p.sticker ? 'Back to the sticker code' : `New setup code ${p.value}`;
+    if (p.kind === 'cal')
+      return p.value === 'default'
+        ? 'Back to the built-in meter calibration'
+        : `New meter calibration${two ? `, measured on relay ${p.ch}` : ''}`;
+    return `${two ? `Wall switch ${p.ch}` : 'Wall switch'}: ${MODE_NAMES[p.value as SwitchMode] ?? p.value}`;
+  });
+  const when = $derived(
+    p?.kind === 'code'
+      ? 'The new code applies once the device is back in normal operation.'
+      : 'It applies as soon as you press.',
+  );
+  const left = $derived(p ? `${Math.floor(p.secs / 60)}:${String(p.secs % 60).padStart(2, '0')}` : '');
+
+  function cancel() {
+    const slot = p?.kind === 'switch' ? (p.ch === 2 ? 'switch2' : 'switch1') : p?.kind === 'cal' ? 'cal' : 'code';
+    set({ key: 'cancel' }).then((r) => {
+      if (!r.ok) say(slot, r.msg, 'bad');
+      kick();
+    });
+  }
+</script>
+
+{#if p}
+  <div class="pending" role="status" aria-live="polite">
+    <div class="in">
+    <div class="text">
+      <div class="what">{what}</div>
+      <div>Press the device's button <b>3 times</b> to save · <b class="num">{left}</b></div>
+      <div class="note">Nothing changes until you press. {when}</div>
+    </div>
+    <button onclick={cancel}>Cancel</button>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .pending {
+    background: var(--warn-bg);
+    color: var(--fg);
+    border-top: 1px solid var(--warn-line);
+    border-bottom: 1px solid var(--warn-line);
+  }
+  .in {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 44rem;
+    margin: 0 auto;
+    padding: 10px 16px;
+    border-left: 5px solid var(--warn-line);
+  }
+  .text { min-width: 0; }
+  .what { font-weight: 650; overflow-wrap: anywhere; }
+  .note { color: var(--muted); font-size: 0.88rem; }
+  button { flex: none; }
+</style>

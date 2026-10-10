@@ -43,6 +43,7 @@
 #include <esp_wifi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <cJSON.h>
 #include <dhcpserver/dhcpserver.h>
 #include <lwip/sockets.h>
 #include <sdkconfig.h>
@@ -66,11 +67,6 @@ static const char *TAG = "maintenance";
 #else
 #define HW_DATA_BUILT false
 #endif
-#if CONFIG_SHELLY_FACTORY_DUMP
-#define FACTORY_DUMP_BUILT true
-#else
-#define FACTORY_DUMP_BUILT false
-#endif
 
 #define AP_IP_0             192
 #define AP_IP_1             168
@@ -86,8 +82,13 @@ static const char *TAG = "maintenance";
 // The largest upload accepted: an app slot plus a generous .ota header.
 #define MAX_UPLOAD_BYTES    (0x300000 + MI_OTA_FIXED_HEADER + MI_OTA_MAX_TLV)
 
-extern const char page_html_start[] asm("_binary_page_html_start");
-extern const char page_html_end[] asm("_binary_page_html_end");
+// The page, built from web/ and gzipped (docs/BUILDING.md, The Wi-Fi mode page).
+extern const uint8_t page_html_gz_start[] asm("_binary_page_html_gz_start");
+extern const uint8_t page_html_gz_end[] asm("_binary_page_html_gz_end");
+// The simple install page: no code shared with the main page, so a bug there
+// can't stop a firmware install.
+extern const char recovery_html_start[] asm("_binary_recovery_html_start");
+extern const char recovery_html_end[] asm("_binary_recovery_html_end");
 
 static shelly_ui_toggle_fn_t s_local_toggle = nullptr;
 static bool (*s_local_toggle_ch)(int ch) = nullptr;
@@ -299,11 +300,41 @@ static esp_err_t page_get(httpd_req_t *req)
 {
     touch();
     httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
-    return httpd_resp_send(req, page_html_start, page_html_end - page_html_start - 1);
+    return httpd_resp_send(req, (const char *)page_html_gz_start, page_html_gz_end - page_html_gz_start);
 }
 
-static esp_err_t status_get(httpd_req_t *req)
+static esp_err_t recovery_get(httpd_req_t *req)
+{
+    touch();
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_send(req, recovery_html_start, recovery_html_end - recovery_html_start - 1);
+}
+
+// A cJSON tree as the reply, freed either way.
+static esp_err_t send_cjson(httpd_req_t *req, cJSON *root)
+{
+    char *text = root != nullptr ? cJSON_PrintUnformatted(root) : nullptr;
+    cJSON_Delete(root);
+    if (text == nullptr) {
+        return send_result(req, "500 Internal Server Error", false, "Out of memory");
+    }
+    esp_err_t err = send_json(req, "200 OK", text);
+    cJSON_free(text);
+    return err;
+}
+
+static void add_code_text(cJSON *obj, const char *name, const setup_code_t *code)
+{
+    char t[SETUP_CODE_FORMATTED_LEN];
+    setup_code_manual_format(code->passcode, code->discriminator, t);
+    cJSON_AddStringToObject(obj, name, t);
+}
+
+// GET /api/state: everything the page shows, and what this build has.
+static esp_err_t state_get(httpd_req_t *req)
 {
     touch();
     const esp_app_desc_t *app = esp_app_get_description();
@@ -312,76 +343,71 @@ static esp_err_t status_get(httpd_req_t *req)
     json_safe(project, sizeof(project), app->project_name);
     json_safe(version, sizeof(version), app->version);
 
-    // The setup code in use, and a change waiting for 3 presses.
+    cJSON *root = cJSON_CreateObject();
+    cJSON *device = cJSON_AddObjectToObject(root, "device");
+    cJSON_AddStringToObject(device, "hw", shelly_hw_desc.hw_code);
+    cJSON_AddStringToObject(device, "variant", project);
+    cJSON_AddStringToObject(device, "version", version);
+    cJSON_AddStringToObject(device, "mac", s_mac);
+
+    bool has_modes = shelly_ui_switch_role() == UI_SWITCH_TOGGLE;
+    cJSON *caps = cJSON_AddObjectToObject(root, "caps");
+    cJSON_AddNumberToObject(caps, "relays", RELAY_CHANNELS);
+    cJSON_AddBoolToObject(caps, "switch_modes", has_modes);
+    cJSON_AddBoolToObject(caps, "meter", shelly_cal_available());
+    cJSON_AddBoolToObject(caps, "meter_skipped", shelly_maintenance_meter_skipped());
+    cJSON_AddBoolToObject(caps, "diag", shelly_diag_log_available());
+    cJSON_AddBoolToObject(caps, "hw", HW_DATA_BUILT);
+
+    cJSON *relays = cJSON_AddArrayToObject(root, "relays");
+    cJSON *modes = cJSON_AddArrayToObject(root, "switch");
+    for (int ch = 0; ch < RELAY_CHANNELS; ch++) {
+        cJSON_AddItemToArray(relays, cJSON_CreateBool(relay_get_ch(ch)));
+        cJSON_AddItemToArray(modes, cJSON_CreateString(ui_switch_mode_name(shelly_switch_mode_get_ch(ch))));
+    }
+
+    // The setup code in use, and the sticker's beside another code.
     setup_code_t code;
     bool created = false;
     bool saved = shelly_setup_code_current(&code, &created);
-    char code_text[SETUP_CODE_FORMATTED_LEN];
-    setup_code_manual_format(code.passcode, code.discriminator, code_text);
-    const char *source = !saved                                     ? "test"
-                         : code.source == SETUP_CODE_SOURCE_USER    ? "yours"
-                         : code.source == SETUP_CODE_SOURCE_STICKER ? "sticker"
-                                                                    : "generated";
-    // The sticker's code, shown beside another code in use.
+    cJSON *c = cJSON_AddObjectToObject(root, "code");
+    add_code_text(c, "text", &code);
+    cJSON_AddStringToObject(c, "source", !saved                                     ? "test"
+                                         : code.source == SETUP_CODE_SOURCE_USER    ? "yours"
+                                         : code.source == SETUP_CODE_SOURCE_STICKER ? "sticker"
+                                                                                    : "generated");
+    cJSON_AddBoolToObject(c, "new", created);
     setup_code_t sticker;
-    char sticker_text[SETUP_CODE_FORMATTED_LEN + 2] = "null";
     if (shelly_setup_code_sticker(&sticker)) {
-        char t[SETUP_CODE_FORMATTED_LEN];
-        setup_code_manual_format(sticker.passcode, sticker.discriminator, t);
-        snprintf(sticker_text, sizeof(sticker_text), "\"%s\"", t);
+        add_code_text(c, "sticker", &sticker);
+    } else {
+        cJSON_AddNullToObject(c, "sticker");
     }
-    bool pending_sticker = false;
+
+    // A change waiting for 3 presses (B-26).
     shelly_change_t change;
     uint32_t secs_left = 0;
-    const char *pending_kind = "null";
-    char pending[SETUP_CODE_FORMATTED_LEN + 2] = "null";
     if (shelly_change_pending(&change, &secs_left)) {
+        cJSON *p = cJSON_AddObjectToObject(root, "pending");
+        bool sticker_back = false;
         if (change.kind == SHELLY_CHANGE_SETUP_CODE) {
-            char t[SETUP_CODE_FORMATTED_LEN];
-            setup_code_manual_format(change.code.passcode, change.code.discriminator, t);
-            snprintf(pending, sizeof(pending), "\"%s\"", t);
-            pending_kind = "\"code\"";
-            pending_sticker = change.code.source == SETUP_CODE_SOURCE_STICKER;
+            cJSON_AddStringToObject(p, "kind", "code");
+            add_code_text(p, "value", &change.code);
+            sticker_back = change.code.source == SETUP_CODE_SOURCE_STICKER;
         } else if (change.kind == SHELLY_CHANGE_CALIBRATION) {
-            snprintf(pending, sizeof(pending), "\"%s\"", cal_ratios_is_default(&change.cal) ? "default" : "new");
-            pending_kind = "\"cal\"";
+            cJSON_AddStringToObject(p, "kind", "cal");
+            cJSON_AddStringToObject(p, "value", cal_ratios_is_default(&change.cal) ? "default" : "new");
         } else {
-            snprintf(pending, sizeof(pending), "\"%s\"", ui_switch_mode_name(change.switch_mode));
-            pending_kind = "\"switch\"";
+            cJSON_AddStringToObject(p, "kind", "switch");
+            cJSON_AddStringToObject(p, "value", ui_switch_mode_name(change.switch_mode));
         }
+        cJSON_AddNumberToObject(p, "ch", change.kind == SHELLY_CHANGE_SETUP_CODE ? 0 : change.channel + 1);
+        cJSON_AddNumberToObject(p, "secs", secs_left);
+        cJSON_AddBoolToObject(p, "sticker", sticker_back);
+    } else {
+        cJSON_AddNullToObject(root, "pending");
     }
-    bool has_modes = shelly_ui_switch_role() == UI_SWITCH_TOGGLE;
-    bool channel_kind = strcmp(pending_kind, "\"switch\"") == 0 || strcmp(pending_kind, "\"cal\"") == 0;
-    unsigned pending_ch = channel_kind ? change.channel + 1u : 0u;
-
-    char body[1024];
-    int n = snprintf(body, sizeof(body),
-                     "{\"hw\":\"%s\",\"variant\":\"%s\",\"version\":\"%s\",\"mac\":\"%s\",\"relay\":%s,"
-                     "\"code\":\"%s\",\"code_source\":\"%s\",\"code_new\":%s,"
-                     "\"switch_modes\":%s,\"switch_mode\":\"%s\","
-                     "\"pending_kind\":%s,\"pending\":%s,\"pending_secs\":%u,\"diag\":%s,"
-                     "\"channels\":%d,\"relay2\":%s,\"switch_mode2\":\"%s\",\"pending_ch\":%u,\"hw_data\":%s,"
-                     "\"meter\":%s,\"meter_skipped\":%s,\"parts\":%s,\"sticker\":%s,\"pending_sticker\":%s}",
-                     shelly_hw_desc.hw_code, project, version, s_mac, relay_get() ? "true" : "false", code_text,
-                     source, created ? "true" : "false", has_modes ? "true" : "false",
-                     ui_switch_mode_name(shelly_switch_mode_get()), pending_kind, pending, (unsigned)secs_left,
-                     shelly_diag_log_available() ? "true" : "false", RELAY_CHANNELS,
-                     relay_get_ch(1) ? "true" : "false", ui_switch_mode_name(shelly_switch_mode_get_ch(1)),
-                     pending_ch, HW_DATA_BUILT ? "true" : "false", shelly_cal_available() ? "true" : "false",
-                     shelly_maintenance_meter_skipped() ? "true" : "false",
-                     FACTORY_DUMP_BUILT ? "true" : "false", sticker_text, pending_sticker ? "true" : "false");
-    if (n < 0 || n >= (int)sizeof(body)) {
-        return send_result(req, "500 Internal Server Error", false, "Status too long");
-    }
-    return send_json(req, "200 OK", body);
-}
-
-static esp_err_t exit_post(httpd_req_t *req)
-{
-    ESP_LOGI(TAG, "Exit requested from the page");
-    send_result(req, "200 OK", true, "Restarting");
-    s_restart = true;
-    return ESP_OK;
+    return send_cjson(req, root);
 }
 
 // Any other address sends the browser to the page. Phones probe a known URL
@@ -428,21 +454,11 @@ static bool read_small_body(httpd_req_t *req, char *text, size_t size, esp_err_t
     return true;
 }
 
-// POST /toggle: toggle relay 1, or with the body "2" relay 2.
-static esp_err_t toggle_post(httpd_req_t *req)
+// Toggle a relay (0-based), as the button would.
+static esp_err_t do_toggle(httpd_req_t *req, int ch)
 {
-    touch();
-    int ch = 0;
-    if (req->content_len > 0) {
-        char text[4];
-        esp_err_t reply = ESP_OK;
-        if (!read_small_body(req, text, sizeof(text), &reply)) {
-            return reply;
-        }
-        ch = atoi(text) - 1;
-        if (ch < 0 || ch >= RELAY_CHANNELS) {
-            return send_result(req, "400 Bad Request", false, "This device has no such relay");
-        }
+    if (ch < 0 || ch >= RELAY_CHANNELS) {
+        return send_result(req, "400 Bad Request", false, "This device has no such relay");
     }
     bool ok;
     if (s_local_toggle_ch != nullptr) {
@@ -456,16 +472,10 @@ static esp_err_t toggle_post(httpd_req_t *req)
     return send_result(req, "200 OK", ok, ok ? "" : "The relay refused to switch (over-temperature or protection)");
 }
 
-// POST /code/set: the owner's 11-digit code, as typed. It waits for 3
-// presses of the button (docs/BUTTON-AND-LED.md, B-26) before it is saved.
-static esp_err_t code_set_post(httpd_req_t *req)
+// The owner's 11-digit code, as typed. It waits for 3 presses of the button
+// (docs/BUTTON-AND-LED.md, B-26) before it is saved.
+static esp_err_t stage_code(httpd_req_t *req, const char *text)
 {
-    touch();
-    char text[40];
-    esp_err_t reply = ESP_OK;
-    if (!read_small_body(req, text, sizeof(text), &reply)) {
-        return reply;
-    }
     switch (shelly_setup_code_stage_manual(text)) {
     case SETUP_CODE_OK:
         return send_result(req, "200 OK", true, "");
@@ -508,37 +518,6 @@ static esp_err_t qr_get(httpd_req_t *req)
     return httpd_resp_send_chunk(req, nullptr, 0);
 }
 
-static esp_err_t code_new_post(httpd_req_t *req)
-{
-    touch();
-    shelly_setup_code_stage_random();
-    return send_result(req, "200 OK", true, "");
-}
-
-// POST /switch/mode: toggle, push, follow or disabled, for SW1; "2:follow"
-// and so on for SW2. It waits for 3 presses of the button, like a setup
-// code (B-26).
-static esp_err_t switch_mode_post(httpd_req_t *req)
-{
-    touch();
-    char text[16];
-    esp_err_t reply = ESP_OK;
-    if (!read_small_body(req, text, sizeof(text), &reply)) {
-        return reply;
-    }
-    int ch = 0;
-    const char *name = text;
-    if (text[0] >= '1' && text[0] <= '9' && text[1] == ':') {
-        ch = text[0] - '1';
-        name = text + 2;
-    }
-    ui_switch_mode_t mode;
-    if (!ui_switch_mode_parse(name, &mode) || !shelly_switch_mode_stage_ch(ch, mode)) {
-        return send_result(req, "400 Bad Request", false, "This device has no wall switch modes, or that mode is unknown");
-    }
-    return send_result(req, "200 OK", true, "");
-}
-
 #if CONFIG_SHELLY_DIAG_LOG
 // GET /diag.txt: the diagnostics log, streamed straight from its static
 // buffer (nothing writes it in this boot). Plain text, shown inline, so a
@@ -560,16 +539,10 @@ static esp_err_t diag_get(httpd_req_t *req)
     return httpd_resp_send_chunk(req, nullptr, 0);
 }
 
-static esp_err_t diag_clear_post(httpd_req_t *req)
-{
-    touch();
-    shelly_diag_log_clear();
-    return send_result(req, "200 OK", true, "");
-}
 #endif
 
 #if CONFIG_SHELLY_HW_SNAPSHOT
-// GET /hw.json: the hardware snapshot of the last normal boot, and what the
+// GET /api/hw: the hardware snapshot of the last normal boot, and what the
 // pins read now.
 static esp_err_t hw_get(httpd_req_t *req)
 {
@@ -654,7 +627,7 @@ static void json_num(char *buf, size_t len, float v, int decimals)
     }
 }
 
-// GET /meter.json: the meter's live readings and the calibration in use.
+// GET /api/meter: the meter's live readings and the calibration in use.
 static esp_err_t meter_get(httpd_req_t *req)
 {
     touch();
@@ -691,18 +664,12 @@ static esp_err_t meter_get(httpd_req_t *req)
     return send_json(req, "200 OK", body);
 }
 
-// POST /cal: "ch=1&v=117.4&a=3.31&w=389", what a reference meter reads on
-// the load running through that relay now. The correction is worked out
-// from the device's last 5 s of readings and waits for 3 presses of the
-// button, like a setup code (B-26).
-static esp_err_t cal_post(httpd_req_t *req)
+// "ch=1&v=117.4&a=3.31&w=389", what a reference meter reads on the load
+// running through that relay now. The correction is worked out from the
+// device's last 5 s of readings and waits for 3 presses of the button, like
+// a setup code (B-26).
+static esp_err_t stage_cal(httpd_req_t *req, const char *text)
 {
-    touch();
-    char text[96];
-    esp_err_t reply = ESP_OK;
-    if (!read_small_body(req, text, sizeof(text), &reply)) {
-        return reply;
-    }
     int ch = -1;
     cal_values_t ref;
     if (!cal_parse_form(text, &ch, &ref)) {
@@ -730,10 +697,9 @@ static esp_err_t cal_post(httpd_req_t *req)
     return send_result(req, "200 OK", true, "");
 }
 
-// POST /cal/reset: back to the built-in calibration, after 3 presses.
-static esp_err_t cal_reset_post(httpd_req_t *req)
+// Back to the built-in calibration, after 3 presses.
+static esp_err_t stage_cal_reset(httpd_req_t *req)
 {
-    touch();
     cal_ratios_t def;
     cal_ratios_default(&def);
     if (!shelly_cal_stage(0, &def)) {
@@ -743,11 +709,136 @@ static esp_err_t cal_reset_post(httpd_req_t *req)
 }
 #endif
 
-static esp_err_t change_cancel_post(httpd_req_t *req)
+// A request body as JSON. Null (and a reply sent) if it isn't.
+static cJSON *read_json_body(httpd_req_t *req, esp_err_t *reply)
+{
+    char text[256];
+    if (!read_small_body(req, text, sizeof(text), reply)) {
+        return nullptr;
+    }
+    cJSON *body = cJSON_Parse(text);
+    if (!cJSON_IsObject(body)) {
+        cJSON_Delete(body);
+        *reply = send_result(req, "400 Bad Request", false, "The request was not understood");
+        return nullptr;
+    }
+    return body;
+}
+
+static const char *json_str(const cJSON *obj, const char *name)
+{
+    const char *v = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(obj, name));
+    return v != nullptr ? v : "";
+}
+
+// A 1-based relay number from the page, 0-based; -1 if missing or wrong.
+static int json_ch(const cJSON *obj)
+{
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(obj, "ch");
+    if (!cJSON_IsNumber(v) || v->valuedouble < 1 || v->valuedouble > RELAY_CHANNELS ||
+        v->valuedouble != (int)v->valuedouble) {
+        return -1;
+    }
+    return (int)v->valuedouble - 1;
+}
+
+#if CONFIG_SHELLY_HAS_METER
+// A reading for the calibration form: empty for null (keep that value).
+static bool json_reading(const cJSON *obj, const char *name, char *out, size_t len)
+{
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(obj, name);
+    if (v == nullptr || cJSON_IsNull(v)) {
+        out[0] = '\0';
+        return true;
+    }
+    if (!cJSON_IsNumber(v) || !isfinite(v->valuedouble)) {
+        return false;
+    }
+    snprintf(out, len, "%.4f", v->valuedouble);
+    return true;
+}
+#endif
+
+static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
+{
+    const char *key = json_str(body, "key");
+    if (strcmp(key, "code") == 0) {
+        return stage_code(req, json_str(body, "value"));
+    }
+    if (strcmp(key, "code.random") == 0) {
+        shelly_setup_code_stage_random();
+        return send_result(req, "200 OK", true, "");
+    }
+    if (strcmp(key, "switch.mode") == 0) {
+        ui_switch_mode_t mode;
+        int ch = json_ch(body);
+        if (ch < 0 || !ui_switch_mode_parse(json_str(body, "value"), &mode) || !shelly_switch_mode_stage_ch(ch, mode)) {
+            return send_result(req, "400 Bad Request", false,
+                               "This device has no wall switch modes, or that mode is unknown");
+        }
+        return send_result(req, "200 OK", true, "");
+    }
+#if CONFIG_SHELLY_HAS_METER
+    if (strcmp(key, "cal") == 0) {
+        char v[24], a[24], w[24], form[96];
+        if (json_ch(body) < 0 || !json_reading(body, "v", v, sizeof(v)) || !json_reading(body, "a", a, sizeof(a)) ||
+            !json_reading(body, "w", w, sizeof(w))) {
+            return send_result(req, "400 Bad Request", false, cal_result_message(CAL_ERR_INPUT));
+        }
+        snprintf(form, sizeof(form), "ch=%d&v=%s&a=%s&w=%s", json_ch(body) + 1, v, a, w);
+        return stage_cal(req, form);
+    }
+    if (strcmp(key, "cal.reset") == 0) {
+        return stage_cal_reset(req);
+    }
+#endif
+    if (strcmp(key, "cancel") == 0) {
+        shelly_change_cancel();
+        return send_result(req, "200 OK", true, "");
+    }
+    return send_result(req, "400 Bad Request", false, "This device has no such setting");
+}
+
+// POST /api/set: a setting that waits for 3 presses of the button (B-26).
+static esp_err_t set_post(httpd_req_t *req)
 {
     touch();
-    shelly_change_cancel();
-    return send_result(req, "200 OK", true, "");
+    esp_err_t reply = ESP_OK;
+    cJSON *body = read_json_body(req, &reply);
+    if (body == nullptr) {
+        return reply;
+    }
+    reply = set_dispatch(req, body);
+    cJSON_Delete(body);
+    return reply;
+}
+
+// POST /api/action: something that happens at once.
+static esp_err_t action_post(httpd_req_t *req)
+{
+    touch();
+    esp_err_t reply = ESP_OK;
+    cJSON *body = read_json_body(req, &reply);
+    if (body == nullptr) {
+        return reply;
+    }
+    const char *action = json_str(body, "action");
+    if (strcmp(action, "toggle") == 0) {
+        reply = do_toggle(req, json_ch(body));
+    } else if (strcmp(action, "exit") == 0) {
+        ESP_LOGI(TAG, "Exit requested from the page");
+        reply = send_result(req, "200 OK", true, "Restarting");
+        s_restart = true;
+#if CONFIG_SHELLY_DIAG_LOG
+    } else if (strcmp(action, "diag.clear") == 0) {
+        shelly_diag_log_clear();
+        reply = send_result(req, "200 OK", true, "");
+#endif
+    } else {
+        reply = send_result(req, "400 Bad Request", false, "This device can't do that");
+    }
+    cJSON_Delete(body);
+    return reply;
 }
 
 static esp_err_t upload_fail(httpd_req_t *req, const char *status, const char *msg)
@@ -914,26 +1005,23 @@ static esp_err_t start_http(void)
     }
     static const httpd_uri_t uris[] = {
         {.uri = "/", .method = HTTP_GET, .handler = page_get, .user_ctx = nullptr},
-        {.uri = "/status", .method = HTTP_GET, .handler = status_get, .user_ctx = nullptr},
-        {.uri = "/toggle", .method = HTTP_POST, .handler = toggle_post, .user_ctx = nullptr},
-        {.uri = "/exit", .method = HTTP_POST, .handler = exit_post, .user_ctx = nullptr},
+        {.uri = "/recovery", .method = HTTP_GET, .handler = recovery_get, .user_ctx = nullptr},
+        // Matching is exact: without these, the 404 redirect sends them to the main page.
+        {.uri = "/recovery/", .method = HTTP_GET, .handler = recovery_get, .user_ctx = nullptr},
+        {.uri = "/recovery.html", .method = HTTP_GET, .handler = recovery_get, .user_ctx = nullptr},
+        {.uri = "/api/state", .method = HTTP_GET, .handler = state_get, .user_ctx = nullptr},
+        {.uri = "/api/set", .method = HTTP_POST, .handler = set_post, .user_ctx = nullptr},
+        {.uri = "/api/action", .method = HTTP_POST, .handler = action_post, .user_ctx = nullptr},
         {.uri = "/update", .method = HTTP_POST, .handler = update_post, .user_ctx = nullptr},
-        {.uri = "/code/set", .method = HTTP_POST, .handler = code_set_post, .user_ctx = nullptr},
-        {.uri = "/code/new", .method = HTTP_POST, .handler = code_new_post, .user_ctx = nullptr},
         {.uri = "/qr.svg", .method = HTTP_GET, .handler = qr_get, .user_ctx = nullptr},
-        {.uri = "/switch/mode", .method = HTTP_POST, .handler = switch_mode_post, .user_ctx = nullptr},
-        {.uri = "/change/cancel", .method = HTTP_POST, .handler = change_cancel_post, .user_ctx = nullptr},
 #if CONFIG_SHELLY_DIAG_LOG
         {.uri = "/diag.txt", .method = HTTP_GET, .handler = diag_get, .user_ctx = nullptr},
-        {.uri = "/diag/clear", .method = HTTP_POST, .handler = diag_clear_post, .user_ctx = nullptr},
 #endif
 #if CONFIG_SHELLY_HW_SNAPSHOT
-        {.uri = "/hw.json", .method = HTTP_GET, .handler = hw_get, .user_ctx = nullptr},
+        {.uri = "/api/hw", .method = HTTP_GET, .handler = hw_get, .user_ctx = nullptr},
 #endif
 #if CONFIG_SHELLY_HAS_METER
-        {.uri = "/meter.json", .method = HTTP_GET, .handler = meter_get, .user_ctx = nullptr},
-        {.uri = "/cal", .method = HTTP_POST, .handler = cal_post, .user_ctx = nullptr},
-        {.uri = "/cal/reset", .method = HTTP_POST, .handler = cal_reset_post, .user_ctx = nullptr},
+        {.uri = "/api/meter", .method = HTTP_GET, .handler = meter_get, .user_ctx = nullptr},
 #endif
 #if CONFIG_SHELLY_FACTORY_DUMP
         {.uri = "/part", .method = HTTP_GET, .handler = part_get, .user_ctx = nullptr},

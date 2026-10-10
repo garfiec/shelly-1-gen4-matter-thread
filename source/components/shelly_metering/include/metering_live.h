@@ -17,7 +17,7 @@
 
 // metering_live.h
 //
-// The meter's live readings for the Wi-Fi maintenance page (/meter.json),
+// The meter's live readings for the Wi-Fi maintenance page (/api/meter),
 // and the averaged readings a calibration is computed from. No Matter
 // dependencies. Without a meter (CONFIG_SHELLY_HAS_METER off) both report
 // nothing.

@@ -16,6 +16,10 @@ source/components/shelly_maintenance/qrcodegen/ is the QR Code generator library
 copyright (c) Project Nayuki, used unmodified under the MIT License (in each
 file's header).
 
+source/components/shelly_maintenance/page.html.gz, the Wi-Fi mode page, is
+built from web/ and includes the Svelte runtime (https://svelte.dev), copyright
+(c) 2016-2025 Svelte Contributors, used under the MIT License.
+
 The compiled firmware is built with the ESP-IDF and ESP-Matter SDKs by Espressif
 Systems and links additional components, including the Matter SDK (connectedhomeip,
 https://github.com/project-chip/connectedhomeip), OpenThread

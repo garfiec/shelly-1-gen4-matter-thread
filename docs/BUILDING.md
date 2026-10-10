@@ -14,6 +14,7 @@ Builds run in a dev container. Everything the build needs is installed in the im
 - [Repository structure](#repository-structure)
 - [Set up the container](#set-up-the-container)
 - [Build](#build)
+- [The Wi-Fi mode page](#the-wi-fi-mode-page)
 - [Build the release artifacts](#build-the-release-artifacts)
 - [Flash your build](#flash-your-build)
 
@@ -24,6 +25,7 @@ Builds run in a dev container. Everything the build needs is installed in the im
 - **[Docker](https://docs.docker.com/get-docker/)**
 - **VS Code** with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension, for the editor workflow. Optional — the container also runs from a plain shell.
 - **macOS or Linux.** The Windows build path is not currently tested.
+- **Node 20.19 or later**, only to change the [Wi-Fi mode page](#the-wi-fi-mode-page). The firmware build doesn't need it.
 
 The container is the only supported build environment. A local ESP-IDF and esp-matter install may work, but it isn't tested, and SDK version drift is the usual reason a build comes out different from the released firmware. If a problem doesn't reproduce in the container, it's hard to help.
 
@@ -108,7 +110,7 @@ Install its `build_diag/outlet.bin`, packaged as an `.ota`, from the Wi-Fi mode 
 For a board that isn't verified yet, `CONFIG_SHELLY_HW_SNAPSHOT` ("Shelly hardware snapshot" menu) records what the hardware reads, for the Wi-Fi mode page. It is off by default and on in the Shelly 2PM Gen4 builds, together with the diagnostics log:
 - **The snapshot**, every 10 s of a normal run: each relay as written and as its pin reads back (`CONFIG_SHELLY_RELAY_READBACK`), each wall switch pin and how many edges it saw, the button pin, the NTC's ADC reading and temperature, the die temperature and the heap. A line a minute also goes to the diagnostics log. It lives in memory that survives the restart into Wi-Fi mode (about 450 bytes); a power cut clears it.
 - **The ADE7953's registers**, on a board with that meter: the meter driver copies the chip's identity, configuration, gains, interrupt registers and measurements into the snapshot once a normal run's snapshot has started, then the measurements every minute. It never reads a register whose read resets it. (The 1.0.0 bring-up build had a separate read-only probe for this.)
-- **On the page:** the Hardware data card, and the raw `/hw.json`.
+- **On the page:** the Hardware data on the Diagnostics tab, and the raw `/api/hw`.
 - **Shelly's stock data partitions** (`CONFIG_SHELLY_FACTORY_DUMP`, "Shelly Wi-Fi maintenance mode" menu, off in every build; turn it on only for a one-off build that reads a new device): links on the Hardware data card download a read-only copy of `shelly`, `fs_0`, `fs_1` or `zb_storage` (`/part?name=shelly`), the stock regions this firmware never uses, to find what Shelly keeps there, such as a factory meter calibration. It only reads flash, and never copies this firmware's own `nvs`. The `shelly` partition may hold the device's own keys and the Wi-Fi mode network is open, so keep the option off outside bring-up and keep the copies private.
 
 Wi-Fi maintenance mode is on by default (`CONFIG_SHELLY_MAINTENANCE`, in the "Shelly Wi-Fi maintenance mode" menu). The Wi-Fi driver's static data costs about 24 KB of RAM in normal operation, where Wi-Fi never runs. Turning the option off gives that back, and the 5 s hold is then refused.
@@ -184,6 +186,35 @@ Both flags are needed, for different reasons:
 The build produces individual `.bin` files in the `build/` directory. The application image is named after the variant; the light build produces `build/light.bin` and the opener build produces `build/opener.bin` and so on. The `Project build complete` line at the end of the build prints its exact path.
 
 A `build/` directory is tied to the environment that created it, because CMake caches absolute toolchain paths. If you switch between containers, delete `build/` and `sdkconfig` first.
+
+---
+
+## The Wi-Fi mode page
+
+The page that [Wi-Fi maintenance mode](UPDATING.md#wi-fi-maintenance-mode) serves is a Svelte 5 app in `source/components/shelly_maintenance/web/`, written in TypeScript. Vite builds it into one self-contained HTML file: no fonts, images or scripts load from elsewhere, because the device's network has no internet. `scripts/gzip.js` compresses that file into `source/components/shelly_maintenance/page.html.gz`.
+
+**The built file is committed.** The firmware build only embeds `page.html.gz` and serves it with `Content-Encoding: gzip`, so it needs no Node and no network, and the builder image stays as it is. After changing anything under `web/`, rebuild the page on the host (Node 20.19 or later) and commit `page.html.gz` with the source:
+
+```bash
+scripts/check-web.sh
+```
+
+It installs the pinned dependencies (`npm ci`), type-checks the source, rebuilds the page, and fails if the committed `page.html.gz` doesn't match the source. It compares the decompressed page, since another zlib may compress the same page to different bytes.
+
+To work on the page without a device, run `npm run dev` in `web/`. A pretend device in `web/mock/device.ts` answers the page's API. `/__mock?d=light` (or `mini`, `1pm`, `2pm`, `2pm-skipped`) picks the device, `/__mock/press` stands in for the 3 button presses that save a change, and `/__mock/offline` stops the replies for 10 seconds, like a restart.
+
+The page talks to the firmware through a small JSON API in `maintenance.cpp`:
+
+| Request | What it does |
+|---|---|
+| `GET /api/state` | Everything the page shows, and `caps`: what this build has (relays, switch modes, meter, diagnostics), which decides the tabs |
+| `POST /api/set` | A setting that waits for 3 presses of the button (B-26): `{"key":"switch.mode","ch":2,"value":"follow"}`, `code`, `code.random`, `cal`, `cal.reset`, or `cancel` |
+| `POST /api/action` | Something that happens at once: `toggle` a relay, `diag.clear`, `exit` |
+| `GET /api/meter`, `GET /api/hw` | Live meter readings, and the hardware data, polled only while their tab is open |
+| `POST /update` | The firmware upload: the raw `.ota` file as the body |
+| `GET /recovery` | A simple install page in plain HTML, with no code shared with the main page |
+
+`/recovery` is the safety net: if the main page ever breaks, firmware can still be installed. The main page also shows a link to it if its script fails to start or throws.
 
 ---
 

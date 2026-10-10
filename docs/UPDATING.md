@@ -122,9 +122,11 @@ The hold is refused (three quick flashes) within 60 seconds of an update, becaus
 ### 3. Upload
 
 1. On a phone or laptop, join the Wi-Fi network named like stock Shelly's, `Shelly<model>-<the 12-digit MAC on the sticker>`, for example `Shelly1PMG4-A1B2C3D4E5F6`. It is open, like stock Shelly's setup network: while the mode lasts, anyone within Wi-Fi range can use the page, switch the relay and install firmware built for this model. Enter the mode only when you are about to use it, and press **Exit** when you are done.
-2. The update page usually opens on its own. If not, browse to `http://192.168.33.1`. Your phone may warn that the network has no internet; that is expected.
-3. The page shows the model, variant, firmware version, relay state and [Matter setup code](#matter-setup-code). Choose the `.ota` file and press **Install**. The LED stays solid while the file uploads and installs.
+2. The update page usually opens on its own. If not, browse to `http://192.168.33.1`. Your phone may warn that the network has no internet; that is expected. The window that opens on its own is the phone's sign-in window, which may not let you choose a file; if choosing the `.ota` does nothing, open `http://192.168.33.1` in your browser.
+3. The page has tabs: **Home** (the relays and the device's model, variant and firmware), **Pairing** (the [Matter setup code](#matter-setup-code)), **Switch**, **Meter**, **Update** and **Diagnostics**. Tabs a model doesn't have are hidden. On **Update**, choose the `.ota` file (on a computer you can also drag it onto the page) and press **Install**. The LED stays solid while the file uploads and installs.
 4. The device checks the file before erasing anything, installs it into its inactive slot, verifies it and restarts into it.
+
+If the page doesn't work in your browser, `http://192.168.33.1/recovery` is a simple install page that does only step 3, with no code shared with the main page.
 
 To install an older version of the same variant, tick **Allow installing an older version** first. An image for a different variant of the same hardware (for example Outlet onto a device running Light) installs whatever its version, since each variant has its own version numbers, but it is a different Matter device type: remove the device from your controller and pair it again afterward.
 
@@ -132,9 +134,9 @@ To install an older version of the same variant, tick **Allow installing an olde
 
 The device returns to normal operation, with Matter and Thread back on, in any of these cases:
 - after an upload;
-- when you press **Exit** on the page;
+- when you press **Exit** on the page (tap it twice: the second tap confirms);
 - when you hold the button 5 seconds again;
-- after 10 minutes with the page closed.
+- after 10 minutes with no page open (the main page and `/recovery` both keep it running while open).
 
 A 5 s hold during an upload abandons it: nothing is installed. The relay's state in the mode becomes its previous state, and it then follows its power-on setting from there: with the default Off it turns off, with Previous it keeps that state (see [Button, Switch and LED](BUTTON-AND-LED.md), P-03). [Automatic rollback](#5-install-the-update) applies as for a Matter OTA: leave the device powered for a minute after an update.
 
@@ -145,15 +147,15 @@ While the mode lasts:
 
 ### Matter setup code
 
-The page also shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. It shows its QR too, and the sticker's code when another is in use. To change it, enter another 11-digit code (the sticker's own goes back to it) or press **Make a new random code**, then press the device's button 3 times within 2 minutes. The LED gives one long flash and the page confirms. Until you press, nothing changes; after 2 minutes, on Cancel or when you leave the mode, the change is dropped. The new code applies once the device is back in normal operation. Your existing pairings keep working either way.
+The page's **Pairing** tab shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. It shows its QR too, and the sticker's code when another is in use. To change it, enter another 11-digit code (the sticker's own goes back to it) or press **Make a new random code**, then press the device's button 3 times within 2 minutes. The LED gives one long flash and the page confirms. Until you press, nothing changes; after 2 minutes, on Cancel or when you leave the mode, the change is dropped. The new code applies once the device is back in normal operation. Your existing pairings keep working either way.
 
 The network is open, so anyone nearby can read the code while the mode is on. Changing it needs the button presses, which need the device in hand.
 
 ### Wall switch mode
 
-On the Light, Outlet, Mini, 1PM and 2PM, the page also sets what the wall switch wired to SW does (on the 2PM, SW1 and SW2 each have their own setting, for relay 1 and relay 2): **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position) or **Disabled**. Choose one, press **Save**, then press the device's button 3 times within 2 minutes, as for the setup code. The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
+On the Light, Outlet, Mini, 1PM and 2PM, the page's **Switch** tab sets what the wall switch wired to SW does (on the 2PM, SW1 and SW2 each have their own setting, for relay 1 and relay 2): **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position) or **Disabled**. Choose one, press **Save**, then press the device's button 3 times within 2 minutes, as for the setup code. The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
 
-On the 1PM and 2PM, the **Power meter** card shows the meter's live readings (each relay's on the 2PM) and can calibrate the meter against your own plug-in meter, saved the same way with 3 presses. See [Calibrating the meter](PROTECTION.md#calibrating-the-meter).
+On the 1PM and 2PM, the **Meter** tab shows the meter's live readings (each relay's on the 2PM) and can calibrate the meter against your own plug-in meter, saved the same way with 3 presses. See [Calibrating the meter](PROTECTION.md#calibrating-the-meter).
 
 ---
 

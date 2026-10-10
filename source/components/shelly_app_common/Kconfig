@@ -11,3 +11,25 @@ menu "Shelly diagnostics"
             for the whole run. For troubleshooting builds only: see docs/BUILDING.md.
 
 endmenu
+
+menu "Shelly device type"
+
+    config SHELLY_HAS_OPENER_MODE
+        bool "Offer a garage door opener mode on the Wi-Fi mode page"
+        default n
+        help
+            For a one-relay board with a dry contact: the Wi-Fi mode page lets
+            the owner choose what the relay is for, an outlet (on or off) or a
+            garage door opener (a short pulse per toggle). Both use the same
+            Matter endpoints, so changing it keeps the pairing. The choice is
+            saved with 3 presses of the button and kept through factory
+            resets. A build without Wi-Fi mode is always an outlet.
+
+    config SHELLY_PULSE_MS
+        int "Opener pulse length (ms)"
+        default 500
+        range 100 5000
+        help
+            How long the relay stays closed for one trigger in opener mode.
+
+endmenu

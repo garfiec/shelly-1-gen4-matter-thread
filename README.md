@@ -44,7 +44,7 @@ Each supported device has its own firmware builds under [`source/`](source/).
 | Device | Variants | Status |
 |---|---|---|
 | Shelly 1 Gen4 | Light, Outlet, Opener, Light Switch | Released |
-| Shelly 1 Mini Gen4 | Outlet, Light Switch | Released |
+| Shelly 1 Mini Gen4 | Outlet (or Opener, chosen on the Wi-Fi mode page), Light Switch | Released; Opener mode experimental, not yet verified on hardware |
 | Shelly 1PM Gen4 | Outlet, with power metering | Experimental, not yet verified on hardware |
 | Shelly 2PM Gen4 | Outlet, Light: two channels, metering per relay | Experimental. Bring-up build ran on one unit; metering build not yet verified on hardware |
 
@@ -63,7 +63,7 @@ Matter device types are declared by the firmware at flash time and cannot be cha
 | Opener | On/Off Plug-in Unit + Contact Sensor | Momentary pulse, roughly 500ms. | Garage door openers, gates, doorbells, and other pulse-activated devices. |
 | Light Switch | On/Off Light + On/Off Light Switch | Latching, but the SW terminal is detached from the relay. | Repurposing the wall switch to control other Matter devices through a binding, while the local relay runs independently. |
 
-All four variants are available for the Shelly 1 Gen4. The Shelly 1 Mini Gen4 ships the Outlet and Light Switch variants. The Shelly 1PM Gen4 ships the Outlet variant with power and energy metering and secondary electrical protection; see [Protection and Metering](docs/PROTECTION.md). The Shelly 2PM Gen4 ships the Outlet and Light variants with two channels, each a relay with its own wall switch input and its own power metering and electrical protection (see the [2PM checklist](docs/FLASHING.md#shelly-2pm-gen4-checklist)). On both metered devices the Wi-Fi mode page can calibrate the meter against your own plug-in meter. Every variant on every device includes a temperature sensor endpoint and over-temperature protection.
+All four variants are available for the Shelly 1 Gen4. The Shelly 1 Mini Gen4 ships the Light Switch variant, and one build that runs as the Outlet or, chosen on its Wi-Fi mode page, as an Opener without the contact sensor: a pulse-only relay, since the Mini runs on mains and its SW terminal carries mains voltage. Both have the same Matter endpoints, so switching keeps the pairing (see [Device type](docs/BUTTON-AND-LED.md#device-type)). The Shelly 1PM Gen4 ships the Outlet variant with power and energy metering and secondary electrical protection; see [Protection and Metering](docs/PROTECTION.md). The Shelly 2PM Gen4 ships the Outlet and Light variants with two channels, each a relay with its own wall switch input and its own power metering and electrical protection (see the [2PM checklist](docs/FLASHING.md#shelly-2pm-gen4-checklist)). On both metered devices the Wi-Fi mode page can calibrate the meter against your own plug-in meter. Every variant on every device includes a temperature sensor endpoint and over-temperature protection.
 
 Light and Outlet are electrically identical. Both latch and hold state, and both keep the SW terminal as a physical wall toggle. They differ only in the Matter device type they report, which sets how your smart home app names, displays, and voice-controls the device, as a light or as an outlet. Some apps let you recategorize after pairing. Others fix the icon, label, and automations to the reported type, which cannot change after commissioning. Pick the variant that matches the load you wired, so the controls read the way you expect.
 
@@ -161,7 +161,7 @@ shelly-1-gen4-matter-thread/
     │   ├── outlet/        Matter On/Off Plug-in Unit, latching relay, SW kept as a wall toggle. Released.
     │   └── light-switch/  Matter On/Off Light Switch, detached relay with the SW input bound to other Matter devices. Released.
     └── shelly-1-mini-gen4/
-        ├── outlet/        Matter On/Off Plug-in Unit, latching relay. Released.
+        ├── outlet/        Matter On/Off Plug-in Unit, latching relay, or a momentary pulse in opener mode. Released.
         └── light-switch/  Matter On/Off Light Switch, detached relay with the SW input bound to other Matter devices. Released.
 ```
 

@@ -156,3 +156,6 @@ CONFIG_SUPPORT_PUSH_AV_STREAM_TRANSPORT_CLUSTER=n
 
 # The device's own Matter setup code (shelly_setup_code.cpp)
 CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y
+
+# Outlet or garage door opener, chosen on the Wi-Fi mode page (device_profile.h)
+CONFIG_SHELLY_HAS_OPENER_MODE=y

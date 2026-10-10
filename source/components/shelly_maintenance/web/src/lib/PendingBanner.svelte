@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MODE_NAMES, set, type SwitchMode } from './api';
+  import { MODE_NAMES, PROFILE_NAMES, set, type Profile, type SwitchMode } from './api';
   import { app, kick, say } from './store.svelte';
 
   const s = $derived(app.state);
@@ -15,6 +15,7 @@
         : s?.code.sticker
           ? 'Wi-Fi mode password back to the sticker code'
           : 'No Wi-Fi mode password: an open network';
+    if (p.kind === 'profile') return `Device type: ${PROFILE_NAMES[p.value as Profile] ?? p.value}`;
     if (p.kind === 'cal')
       return p.value === 'default'
         ? 'Back to the built-in meter calibration'
@@ -24,15 +25,17 @@
   const when = $derived(
     p?.kind === 'code'
       ? 'The new code applies once the device is back in normal operation.'
-      : p?.kind === 'wifi'
-        ? 'It applies the next time Wi-Fi mode starts: this connection stays as it is.'
-        : 'It applies as soon as you press.',
+      : p?.kind === 'profile'
+        ? 'It applies once the device is back in normal operation.'
+        : p?.kind === 'wifi'
+          ? 'It applies the next time Wi-Fi mode starts: this connection stays as it is.'
+          : 'It applies as soon as you press.',
   );
   const left = $derived(p ? `${Math.floor(p.secs / 60)}:${String(p.secs % 60).padStart(2, '0')}` : '');
 
   function cancel() {
     const slot =
-      p?.kind === 'switch' ? (p.ch === 2 ? 'switch2' : 'switch1') : p?.kind === 'cal' || p?.kind === 'wifi' ? p.kind : 'code';
+      p?.kind === 'switch' ? (p.ch === 2 ? 'switch2' : 'switch1') : p?.kind === 'cal' || p?.kind === 'wifi' || p?.kind === 'profile' ? p.kind : 'code';
     set({ key: 'cancel' }).then((r) => {
       if (!r.ok) say(slot, r.msg, 'bad');
       kick();

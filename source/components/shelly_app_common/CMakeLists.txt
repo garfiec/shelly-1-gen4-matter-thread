@@ -2,6 +2,7 @@ idf_component_register(SRCS "app_common.cpp" "diagnostics.cpp" "shelly_ui.cpp" "
                             "setup_code.c" "shelly_setup_code.cpp" "shelly_settings.cpp"
                             "diag_ring.c" "diag_log.cpp" "calibration_logic.c" "shelly_calibration.cpp"
                             "wifi_password.c" "shelly_wifi_password.cpp"
+                            "device_profile.c" "shelly_pulse.cpp"
                        INCLUDE_DIRS "include"
                        PRIV_INCLUDE_DIRS "${ESP_MATTER_PATH}/examples/common/utils"
                        REQUIRES esp_matter

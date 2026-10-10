@@ -94,3 +94,6 @@ CONFIG_ESP_TIMER_TASK_STACK_SIZE=6144
 
 # The device's own Matter setup code (shelly_setup_code.cpp)
 CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y
+
+# Outlet or garage door opener, chosen on the Wi-Fi mode page (device_profile.h)
+CONFIG_SHELLY_HAS_OPENER_MODE=y

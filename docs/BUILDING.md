@@ -61,7 +61,7 @@ source/
 │   ├── outlet/          # Matter On/Off Plug-in Unit, latching relay, SW kept as a wall toggle (released)
 │   └── light-switch/    # Matter On/Off Light Switch, detached relay + SW input bound to other Matter devices (released)
 ├── shelly-1-mini-gen4/
-│   ├── outlet/          # Matter On/Off Plug-in Unit, latching relay (released)
+│   ├── outlet/          # Matter On/Off Plug-in Unit, latching relay, or a momentary pulse in opener mode (released)
 │   └── light-switch/    # Matter On/Off Light Switch, detached relay + SW input bound to other Matter devices (released)
 ├── shelly-1pm-gen4/
 │   └── outlet/          # Matter On/Off Plug-in Unit + Electrical Sensor, power metering and protection (experimental)
@@ -207,8 +207,8 @@ The page talks to the firmware through a small JSON API in `maintenance.cpp`:
 
 | Request | What it does |
 |---|---|
-| `GET /api/state` | Everything the page shows, and `caps`: what this build has (relays, switch modes, meter, diagnostics), which decides the tabs |
-| `POST /api/set` | A setting that waits for 3 presses of the button (B-26): `{"key":"switch.mode","ch":2,"value":"follow"}`, `code`, `code.random`, `wifi.password`, `wifi.password.default`, `cal`, `cal.reset`, or `cancel` |
+| `GET /api/state` | Everything the page shows, and `caps`: what this build has (relays, switch modes, meter, diagnostics, device type), which decides the tabs |
+| `POST /api/set` | A setting that waits for 3 presses of the button (B-26): `{"key":"switch.mode","ch":2,"value":"follow"}`, `code`, `code.random`, `wifi.password`, `wifi.password.default`, `cal`, `cal.reset`, `profile` (`outlet` or `opener`, on a build with `CONFIG_SHELLY_HAS_OPENER_MODE`), or `cancel` |
 | `POST /api/action` | Something that happens at once: `toggle` a relay, `diag.clear`, `exit` |
 | `GET /api/meter`, `GET /api/hw` | Live meter readings, and the hardware data, polled only while their tab is open |
 | `POST /update` | The firmware upload: the raw `.ota` file as the body |

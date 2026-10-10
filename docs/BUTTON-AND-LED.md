@@ -97,9 +97,9 @@ Every gesture in every state. A refused action shows three quick flashes (LED-14
 | B-23 | Wi-Fi maintenance mode | Hold 5-10 s | Exit Wi-Fi mode | The same gesture that entered it. An upload in progress is abandoned; nothing is installed |
 | B-24 | Wi-Fi maintenance mode | Hold 10-20 s | Factory reset after a restart | The device restarts into normal mode and resets once Matter starts. An upload in progress is abandoned |
 | B-25 | Wi-Fi mode, change waiting | Tap | Toggle, without Matter | As B-21. The change keeps waiting |
-| B-26 | Wi-Fi mode, change waiting | 3+ taps | Save the change | The setup code, wall-switch mode, Wi-Fi mode password or meter calibration chosen on the page (see [Save the change](#what-each-action-does)) is saved. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
+| B-26 | Wi-Fi mode, change waiting | 3+ taps | Save the change | The setup code, wall-switch mode, Wi-Fi mode password, meter calibration or device type chosen on the page (see [Save the change](#what-each-action-does)) is saved. The presses must come within 2 minutes of the change; after that it is dropped and 3 presses are refused again (B-22) |
 | B-27 | Wi-Fi mode, change waiting | Hold 5-10 s | Exit Wi-Fi mode | The change is dropped; the old setting stays |
-| B-28 | Wi-Fi mode, change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the switch mode and meter calibration, and forgets a setup code you entered (see [Factory reset](#what-each-action-does)) |
+| B-28 | Wi-Fi mode, change waiting | Hold 10-20 s | Factory reset after a restart | The change is dropped. A factory reset keeps the switch mode, meter calibration and device type, and forgets a setup code you entered (see [Factory reset](#what-each-action-does)) |
 | B-29 | Booting | 2 taps | Refused | As B-01 |
 | B-30 | Normal | 2 taps | Toggle | Relay 2 on the 2PM; on other devices the same as a tap (relay 1) |
 | B-31 | First 60 s after an update | 2 taps | Toggle | As B-30 |
@@ -133,7 +133,7 @@ A change waiting on the Wi-Fi mode page doesn't change these rows: the wall swit
 
 ### Wall switch modes
 
-The Light, Outlet, Mini, 1PM and 2PM let you choose what the wall switch does, on the Wi-Fi mode page (saved with 3 presses of the button, B-26). The Opener and Light Switch use SW for their own purpose and have no modes. While booting, the switch is ignored in every mode (SW-01). A build without Wi-Fi mode always uses Toggle, whatever was saved, since it has no page to change it back. The mode is kept through factory resets and updates. On the 2PM each input has its own mode, and each drives its own relay: SW1 relay 1, SW2 relay 2.
+The Light, Outlet, Mini, 1PM and 2PM let you choose what the wall switch does, on the Wi-Fi mode page (saved with 3 presses of the button, B-26). The Opener and Light Switch use SW for their own purpose and have no modes. While booting, the switch is ignored in every mode (SW-01). A build without Wi-Fi mode always uses Toggle, whatever was saved, since it has no page to change it back. The mode is kept through factory resets and updates. On the 2PM each input has its own mode, and each drives its own relay: SW1 relay 1, SW2 relay 2. A Mini in Opener mode keeps the modes, with a toggle that is a pulse (see [Device type](#device-type)).
 
 | ID | Mode | Change | Normal | Wi-Fi mode |
 |---|---|---|---|---|
@@ -149,6 +149,13 @@ The Light, Outlet, Mini, 1PM and 2PM let you choose what the wall switch does, o
 - **Follow:** the relay matches the switch: switch on, relay on. It acts on changes only; at power-on the relay follows its power-on setting (P-01), not the switch. It relies on which input level means "switch on", taken from a hardware-tested ESPHome configuration but not verified with this firmware. If Follow runs backwards on your device, build with `CONFIG_SHELLY_SWITCH_ACTIVE_HIGH=n` and please report it.
 - **Disabled:** the switch does nothing. Use it if SW is not wired or picks up noise.
 
+### Device type
+
+On the Shelly 1 Mini Gen4 the Wi-Fi mode page also sets what the relay is for (saved with 3 presses, B-26). It applies from the next normal boot, is kept through factory resets and updates, and a build without Wi-Fi mode is always an Outlet. Both types have the same Matter endpoints, so the pairing and the Home Assistant entity stay.
+
+- **Outlet** (the default): the relay stays on or off. Everything on this page that says "Mini" applies as written.
+- **Opener:** every toggle is a pulse, as on the Shelly 1 Gen4 Opener (see [Toggle](#what-each-action-does)), and the relay is always off at power-on (P-01). SW keeps its mode: Toggle and Push button trigger the opener on each flip or press; Follow triggers it when the switch turns on, and turning it off ends a pulse that is still running and otherwise does nothing. Unlike the Shelly 1 Gen4 Opener, SW is not a door sensor: the Mini runs on mains, so SW carries mains voltage.
+
 Turn on and Turn off go through the same checks as a toggle: a refused On shows LED-14, and on the 1PM an On clears an overcurrent trip and an Off cancels an overvoltage restore. If the relay is already in the wanted state, nothing happens and nothing flashes: the relay already shows the switch's position. This is the one input with no feedback of its own.
 
 ## What each action does
@@ -157,10 +164,10 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 - If the relay refuses to turn on, the LED shows the refusal flash (LED-14). It refuses during over-temperature, when the temperature sensor has failed, and on the 1PM during overvoltage and for 2 s after a protection trip. On the 2PM an over-temperature trip turns both relays off, and both refuse to turn on until it clears. See [Protection and Metering](PROTECTION.md).
 - If Matter stays busy for 2 s (for example while it is pairing), the toggle is refused too (LED-14) rather than acting late. The same applies to the Wi-Fi mode hold.
 - **1PM:** a tap or switch change that turns the relay on clears an overcurrent trip. One that turns it off during an overvoltage trip cancels the automatic restore.
-- **Opener:** a toggle is a 500 ms pulse. A tap during the pulse ends it.
+- **Opener**, and a Mini in Opener mode: a toggle is a 500 ms pulse. A tap during the pulse ends it.
 - **Light Switch:** the button toggles the local relay only.
 
-**Toggle, without Matter.** The same, in Wi-Fi maintenance mode: the relay switches directly and the same protections apply. The Opener pulses.
+**Toggle, without Matter.** The same, in Wi-Fi maintenance mode: the relay switches directly and the same protections apply. The Opener, and a Mini in Opener mode, pulse.
 
 **Open pairing.** Opens a Matter pairing window over Bluetooth and Thread, and the LED shows the pairing blink (LED-02). The window takes the device's own setup code (see [Commissioning](COMMISSIONING.md#your-setup-code)).
 - **Paired device:** the window lasts 3 minutes. Use it to add the device to a second ecosystem.
@@ -169,7 +176,7 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 - **Refused** while someone is part-way through pairing, so their session is not cut off.
 
 **Enter Wi-Fi mode** (experimental). The device restarts into Wi-Fi maintenance mode: Matter and Thread are off, the device runs its own Wi-Fi network named like stock Shelly's, `Shelly<model>-<the MAC on the sticker>`, with the sticker's setup code as its password (see [Wi-Fi mode password](UPDATING.md#wi-fi-mode-password)), and the page at `http://192.168.33.1` installs a firmware update and shows the device's Matter setup code. See [Updating](UPDATING.md#wi-fi-maintenance-mode).
-- The relay keeps its state across the restart, apart from a brief off while it reboots. The Opener's trigger always stays off.
+- The relay keeps its state across the restart, apart from a brief off while it reboots. The trigger of the Opener, or of a Mini in Opener mode, always stays off.
 - The mode ends after an upload, on the page's Exit button, with the 5 s hold again, or after 10 minutes with no page open.
 - Home Assistant shows the device as unavailable until it is back in normal mode.
 - If the mode cannot start (the network or the page fails), the device flashes refusal and restarts normally.
@@ -179,9 +186,10 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 **Factory reset.** Clears the Matter pairings and the Thread network, then restarts ready to pair (LED-02). A setup code you entered on the Wi-Fi mode page is forgotten: the device goes back to the code on its Shelly sticker, or to the code it made itself if it has no sticker code (see [Commissioning](COMMISSIONING.md#your-setup-code)).
 - The firmware stays installed. This is not a return to stock firmware: see [Reversibility](REVERSIBILITY.md).
 - **1PM:** the learned mains voltage is cleared too. The energy total is kept.
+- The switch mode, the meter calibration and the Mini's device type are kept.
 - An overcurrent trip survives the reset. The first On from the new controller, or a tap, clears it.
 
-**Save the change.** On the Wi-Fi mode page you can change these settings: the Matter setup code (enter another 11-digit code, or make a new random one; typing the Shelly sticker's code goes back to it; see [Commissioning](COMMISSIONING.md#your-setup-code)); on the Light, Outlet, Mini, 1PM and 2PM, the [wall switch mode](#wall-switch-modes) (on the 2PM, SW1's and SW2's separately); the [Wi-Fi mode password](UPDATING.md#wi-fi-mode-password); and on the 1PM and 2PM, the meter calibration (see [Protection and Metering](PROTECTION.md#calibrating-the-meter)). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code applies from the next normal boot, a new Wi-Fi mode password the next time Wi-Fi mode starts; a new switch mode or calibration applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
+**Save the change.** On the Wi-Fi mode page you can change these settings: the Matter setup code (enter another 11-digit code, or make a new random one; typing the Shelly sticker's code goes back to it; see [Commissioning](COMMISSIONING.md#your-setup-code)); on the Light, Outlet, Mini, 1PM and 2PM, the [wall switch mode](#wall-switch-modes) (on the 2PM, SW1's and SW2's separately); the [Wi-Fi mode password](UPDATING.md#wi-fi-mode-password); on the 1PM and 2PM, the meter calibration (see [Protection and Metering](PROTECTION.md#calibrating-the-meter)); and on the Mini, the [device type](#device-type). Nothing changes until you press the button 3 times within 2 minutes: then the LED gives one long flash (LED-15). A new setup code or device type applies from the next normal boot, a new Wi-Fi mode password the next time Wi-Fi mode starts; a new switch mode or calibration applies at once. One change waits at a time: choosing another replaces it. The page shows the waiting change and the time left; after 2 minutes, on Cancel, or on leaving Wi-Fi mode, it is dropped.
 
 **Factory reset after a restart.** The device records the request, restarts, and resets as soon as Matter is up. If Matter never starts, the reset does not happen; reflash over UART.
 
@@ -189,7 +197,7 @@ Turn on and Turn off go through the same checks as a toggle: a refused On shows 
 
 | ID | Situation | Relay | LED |
 |---|---|---|---|
-| P-01 | Power-on, or any restart into normal mode | Follows StartUpOnOff (each relay its own on the 2PM): default Off. The Opener is always Off. A 1PM with an overcurrent trip stays Off. | Off while booting, then the state |
+| P-01 | Power-on, or any restart into normal mode | Follows StartUpOnOff (each relay its own on the 2PM): default Off. The Opener, and a Mini in Opener mode, are always Off. A 1PM with an overcurrent trip stays Off. | Off while booting, then the state |
 | P-02 | Restart into Wi-Fi mode | Back to its state before the restart, after a brief off. On the 1PM and 2PM, Off while the meter is off in Wi-Fi mode after an unexpected stop, since overcurrent protection is off then too (see [Calibrating the meter](PROTECTION.md#calibrating-the-meter)); you can still switch it on | Wi-Fi mode double blink (LED-08) |
 | P-03 | Exit from Wi-Fi mode | Follows StartUpOnOff, as P-01, from its state in Wi-Fi mode: with Previous it keeps that state | Off while booting, then the state |
 | P-04 | After a factory reset | Off | Pairing blink (LED-02) |

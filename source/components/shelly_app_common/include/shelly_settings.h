@@ -18,8 +18,9 @@
 //
 // The device settings changed on the Wi-Fi maintenance page: the Matter
 // setup code (shelly_setup_code.h), the wall-switch mode, the Wi-Fi mode
-// password (shelly_wifi_password.h) and, on metered boards, the meter
-// calibration (shelly_calibration.h). A change made on the page waits here
+// password (shelly_wifi_password.h), on metered boards the meter
+// calibration (shelly_calibration.h) and, where the build offers it, the
+// device type (device_profile.h). A change made on the page waits here
 // until the button is pressed 3 times within SHELLY_CHANGE_CONFIRM_S
 // (docs/BUTTON-AND-LED.md, B-26), so nobody who joins the network can
 // change a setting without the device in hand.
@@ -30,6 +31,7 @@
 #include <stdint.h>
 
 #include <calibration_logic.h>
+#include <device_profile.h>
 #include <setup_code.h>
 #include <ui_policy.h>
 #include <wifi_password.h>
@@ -47,6 +49,16 @@ ui_switch_mode_t shelly_switch_mode_get(void);
 // The same for one input (0 = SW1). Each input of a 2-channel board has its own.
 ui_switch_mode_t shelly_switch_mode_get_ch(int ch);
 
+// The device type this boot runs as: read once, the first time it's asked
+// for (app_main asks before anything else uses the relay), and kept for the
+// whole boot, since a saved change applies from the next boot. Outlet if
+// the build doesn't offer the choice, has no Wi-Fi mode, or none is saved.
+device_profile_t shelly_profile_get(void);
+// The saved device type: the one the next boot runs as.
+device_profile_t shelly_profile_saved(void);
+// Whether this build offers the choice (CONFIG_SHELLY_HAS_OPENER_MODE).
+bool shelly_profile_available(void);
+
 // ---- The change waiting for 3 presses ----
 
 #define SHELLY_CHANGE_CONFIRM_S 120
@@ -57,6 +69,7 @@ typedef enum {
     SHELLY_CHANGE_SWITCH_MODE,
     SHELLY_CHANGE_CALIBRATION,
     SHELLY_CHANGE_WIFI_PASSWORD,
+    SHELLY_CHANGE_PROFILE,
 } shelly_change_kind_t;
 
 typedef struct {
@@ -68,6 +81,7 @@ typedef struct {
     cal_ratios_t cal;               // SHELLY_CHANGE_CALIBRATION: the new ratios
     char wifi_password[WIFI_PASSWORD_MAX + 1]; // SHELLY_CHANGE_WIFI_PASSWORD: the owner's
                                     // own, or "" to go back to the sticker code (or none)
+    device_profile_t profile;       // SHELLY_CHANGE_PROFILE
 } shelly_change_t;
 
 // Stage a change. It replaces any change already waiting.
@@ -86,14 +100,18 @@ bool shelly_cal_stage(int ch, const cal_ratios_t *ratios);
 // False if it isn't 8 to 63 printable ASCII characters.
 bool shelly_wifi_password_stage(const char *password);
 
+// Stage a device type. False if this build doesn't offer the choice or the
+// type is not valid.
+bool shelly_profile_stage(device_profile_t profile);
+
 void shelly_change_cancel(void);
 
 // The waiting change and the seconds left to confirm it; false if none.
 bool shelly_change_pending(shelly_change_t *out, uint32_t *secs_left);
 
-// Save the waiting change: a setup code applies from the next normal boot,
-// a Wi-Fi mode password from the next Wi-Fi mode, a switch mode and a
-// calibration at once. False if none is waiting or the save failed.
+// Save the waiting change: a setup code and a device type apply from the
+// next normal boot, a Wi-Fi mode password from the next Wi-Fi mode, a
+// switch mode and a calibration at once. False if none is waiting or the save failed.
 bool shelly_change_confirm(void);
 
 // How many changes have been saved this boot: the page compares it to tell

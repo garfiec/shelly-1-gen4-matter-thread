@@ -8,12 +8,23 @@
   const now = $derived(app.state!.switch[ch - 1]);
   const relay = $derived(two ? `relay ${ch}` : 'the relay');
   const slot = $derived(ch === 2 ? 'switch2' : 'switch1');
-  const options = $derived<{ v: SwitchMode; hint: string }[]>([
-    { v: 'toggle', hint: `An ordinary on/off switch: any flip toggles ${relay}` },
-    { v: 'push', hint: `A button that springs back: each press toggles ${relay} once` },
-    { v: 'follow', hint: `${two ? `Relay ${ch}` : 'The relay'} matches the switch: switch on, relay on` },
-    { v: 'disabled', hint: 'The switch does nothing' },
-  ]);
+  // In opener mode (from the next boot, if just saved) a toggle is a pulse.
+  const opener = $derived(app.state!.profile?.next === 'opener');
+  const options = $derived<{ v: SwitchMode; hint: string }[]>(
+    opener
+      ? [
+          { v: 'toggle', hint: 'An ordinary on/off switch: any flip triggers the opener' },
+          { v: 'push', hint: 'A button that springs back: each press triggers the opener once' },
+          { v: 'follow', hint: 'Switching on triggers the opener; switching off does nothing' },
+          { v: 'disabled', hint: 'The switch does nothing' },
+        ]
+      : [
+          { v: 'toggle', hint: `An ordinary on/off switch: any flip toggles ${relay}` },
+          { v: 'push', hint: `A button that springs back: each press toggles ${relay} once` },
+          { v: 'follow', hint: `${two ? `Relay ${ch}` : 'The relay'} matches the switch: switch on, relay on` },
+          { v: 'disabled', hint: 'The switch does nothing' },
+        ],
+  );
 
   // Follows the device until you pick another mode; back to it after a save or cancel.
   let picked = $state<SwitchMode | null>(null);

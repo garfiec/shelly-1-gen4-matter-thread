@@ -1,7 +1,7 @@
 // What the page knows about the device, refreshed by polling: the state
 // every 2 s, the meter and hardware data only while a tab shows them.
 
-import { getHw, getMeter, getState, MODE_NAMES, type Hw, type Meter, type Pending, type State } from './api';
+import { getHw, getMeter, getState, MODE_NAMES, PROFILE_NAMES, type Hw, type Meter, type Pending, type State } from './api';
 
 export type MsgKind = '' | 'good' | 'bad';
 export interface Msg {
@@ -20,7 +20,7 @@ export interface Tab {
 export const TABS: Tab[] = [
   { id: 'home', label: 'Home', shown: () => true },
   { id: 'pairing', label: 'Pairing', shown: () => true },
-  { id: 'switch', label: 'Switch', shown: (s) => s.caps.switch_modes },
+  { id: 'switch', label: 'Switch', shown: (s) => s.caps.switch_modes || s.caps.profiles },
   { id: 'meter', label: 'Meter', shown: (s) => s.caps.meter || s.caps.meter_skipped },
   { id: 'update', label: 'Update', shown: () => true },
   { id: 'diag', label: 'Diagnostics', shown: (s) => s.caps.diag || s.caps.hw },
@@ -43,7 +43,7 @@ export const app = $state({
   done: '' as '' | 'exit' | 'installed',
   // The firmware upload, kept here so switching tabs doesn't lose it. pct -1: none.
   up: { pct: -1, msg: '', kind: '' as MsgKind },
-  msgs: { code: blank(), switch1: blank(), switch2: blank(), cal: blank(), relay: blank(), wifi: blank() } as Record<string, Msg>,
+  msgs: { code: blank(), switch1: blank(), switch2: blank(), cal: blank(), relay: blank(), wifi: blank(), profile: blank() } as Record<string, Msg>,
 });
 
 function blank(): Msg {
@@ -88,6 +88,10 @@ function settle(s: State) {
     const slot = w.ch === 2 ? 'switch2' : 'switch1';
     if (now === w.value) say(slot, `Saved: ${MODE_NAMES[now]}.`, 'good');
     else say(slot, `The change was not saved. The switch is still ${MODE_NAMES[now] ?? now}.`, 'bad');
+  } else if (w.kind === 'profile') {
+    const next = s.profile.next;
+    if (next === w.value) say('profile', `Saved: ${PROFILE_NAMES[next]}, once the device is back in normal operation.`, 'good');
+    else say('profile', `The change was not saved. It is still ${PROFILE_NAMES[next] ?? next}.`, 'bad');
   } else if (w.kind === 'wifi') {
     if (s.saves === w.saves) say('wifi', 'The change was not saved.', 'bad');
     else say('wifi', 'Saved. It applies the next time Wi-Fi mode starts.', 'good');

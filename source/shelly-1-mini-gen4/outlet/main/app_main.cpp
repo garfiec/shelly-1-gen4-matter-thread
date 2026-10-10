@@ -30,6 +30,8 @@
 
 #include <app_priv.h>
 #include <shelly_app.h>
+#include <shelly_pulse.h>
+#include <shelly_settings.h>
 #include <shelly_setup_code.h>
 #if CONFIG_SHELLY_MAINTENANCE
 #include <maintenance.h>
@@ -96,8 +98,9 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
 }
 
 // The button and the wall switch toggle the relay through the OnOff
-// attribute, so Matter sees every change. What each input does in each
-// state is the device UI: docs/BUTTON-AND-LED.md.
+// attribute, so Matter sees every change; in opener mode that write runs
+// the pulse (app_driver.cpp). What each input does in each state is the
+// device UI: docs/BUTTON-AND-LED.md.
 static bool app_toggle(void)
 {
     return shelly_onoff_toggle(relay_endpoint_id);
@@ -123,6 +126,10 @@ extern "C" void app_main()
     // Initialize status LED
     status_led_init();
 
+    // Outlet or garage door opener, chosen on the Wi-Fi mode page. Both have
+    // the same Matter endpoints; opener mode makes every toggle a pulse.
+    const bool opener = shelly_profile_get() == DEVICE_PROFILE_OPENER;
+
     // Wi-Fi maintenance mode (the button held 5 s) is a boot of its own:
     // Matter and Thread are never started. See docs/BUTTON-AND-LED.md.
 #if CONFIG_SHELLY_MAINTENANCE
@@ -131,15 +138,20 @@ extern "C" void app_main()
         relay_init();
         thermal_init();
         switch_input_init(app_switch_changed, nullptr);
+        if (opener) {
+            shelly_pulse_local_init();
+        }
         shelly_ui_config_t maintenance_ui = {
             .toggle = app_toggle,
-            .local_toggle = shelly_local_relay_toggle,
+            .local_toggle = opener ? shelly_pulse_local : shelly_local_relay_toggle,
             .toggle_to = app_toggle_to,
-            .local_toggle_to = shelly_local_relay_toggle_to,
+            .local_toggle_to = opener ? shelly_pulse_local_to : shelly_local_relay_toggle_to,
             .switch_role = UI_SWITCH_TOGGLE,
         };
         shelly_ui_init(&maintenance_ui);
-        shelly_maintenance_run(relay_was_on, shelly_local_relay_toggle);
+        // Opener: the trigger is never restored, or it would stay closed
+        // with no pulse timer to release it.
+        shelly_maintenance_run(relay_was_on && !opener, opener ? shelly_pulse_local : shelly_local_relay_toggle);
     }
 #endif
 
@@ -154,9 +166,9 @@ extern "C" void app_main()
     switch_input_init(app_switch_changed, nullptr);
     shelly_ui_config_t ui_config = {
         .toggle = app_toggle,
-        .local_toggle = shelly_local_relay_toggle,
+        .local_toggle = opener ? shelly_pulse_local : shelly_local_relay_toggle,
         .toggle_to = app_toggle_to,
-        .local_toggle_to = shelly_local_relay_toggle_to,
+        .local_toggle_to = opener ? shelly_pulse_local_to : shelly_local_relay_toggle_to,
         .switch_role = UI_SWITCH_TOGGLE,
     };
     shelly_ui_init(&ui_config);
@@ -170,8 +182,9 @@ extern "C" void app_main()
 
     MEMORY_PROFILER_DUMP_HEAP_STAT("node created");
 
-    // On/Off Plug-in Unit drives the outlet relay (presents as an outlet,
-    // not a light). Latching on/off; the wall switch (SW) and button toggle it.
+    // On/Off Plug-in Unit drives the relay (presents as an outlet, not a
+    // light), in both device types: latching on/off, or in opener mode a
+    // momentary pulse. The wall switch (SW) and button toggle it.
     on_off_plug_in_unit::config_t plugin_config;
     plugin_config.on_off.on_off = DEFAULT_POWER;
 
@@ -180,7 +193,7 @@ extern "C" void app_main()
     ABORT_APP_ON_FAILURE(endpoint != nullptr, ESP_LOGE(TAG, "Failed to create on_off_plug_in_unit endpoint"));
 
     relay_endpoint_id = endpoint::get_id(endpoint);
-    ESP_LOGI(TAG, "Outlet relay created with endpoint_id %d", relay_endpoint_id);
+    ESP_LOGI(TAG, "%s relay created with endpoint_id %d", opener ? "Opener" : "Outlet", relay_endpoint_id);
 
     // Temperature Sensor endpoint exposes the die temperature the thermal
     // monitor already polls. Starts null until the first reading; min/max
@@ -229,8 +242,11 @@ extern "C" void app_main()
 #endif // CONFIG_ENABLE_SET_CERT_DECLARATION_API
 
     // Back from Wi-Fi maintenance mode: its relay state is the previous
-    // state StartUpOnOff applies to (docs/BUTTON-AND-LED.md P-03).
-    shelly_maintenance_carry_relay(relay_endpoint_id);
+    // state StartUpOnOff applies to (docs/BUTTON-AND-LED.md P-03). Not in
+    // opener mode, whose trigger always starts off.
+    if (!opener) {
+        shelly_maintenance_carry_relay(relay_endpoint_id);
+    }
 
     // The diagnostics provider must be in place before Matter starts: the
     // GeneralDiagnostics boot event reads it at startup.

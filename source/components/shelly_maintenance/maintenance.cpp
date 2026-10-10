@@ -394,6 +394,7 @@ static esp_err_t state_get(httpd_req_t *req)
     cJSON_AddBoolToObject(caps, "meter_skipped", shelly_maintenance_meter_skipped());
     cJSON_AddBoolToObject(caps, "diag", shelly_diag_log_available());
     cJSON_AddBoolToObject(caps, "hw", HW_DATA_BUILT);
+    cJSON_AddBoolToObject(caps, "profiles", shelly_profile_available());
 
     cJSON *relays = cJSON_AddArrayToObject(root, "relays");
     cJSON *modes = cJSON_AddArrayToObject(root, "switch");
@@ -401,6 +402,11 @@ static esp_err_t state_get(httpd_req_t *req)
         cJSON_AddItemToArray(relays, cJSON_CreateBool(relay_get_ch(ch)));
         cJSON_AddItemToArray(modes, cJSON_CreateString(ui_switch_mode_name(shelly_switch_mode_get_ch(ch))));
     }
+
+    // The device type: this boot's, and the saved one the next boot runs as.
+    cJSON *prof = cJSON_AddObjectToObject(root, "profile");
+    cJSON_AddStringToObject(prof, "now", device_profile_name(shelly_profile_get()));
+    cJSON_AddStringToObject(prof, "next", device_profile_name(shelly_profile_saved()));
 
     // The setup code in use, and the sticker's beside another code.
     setup_code_t code;
@@ -444,6 +450,9 @@ static esp_err_t state_get(httpd_req_t *req)
         } else if (change.kind == SHELLY_CHANGE_WIFI_PASSWORD) {
             cJSON_AddStringToObject(p, "kind", "wifi");
             cJSON_AddStringToObject(p, "value", change.wifi_password[0] != '\0' ? "own" : "default");
+        } else if (change.kind == SHELLY_CHANGE_PROFILE) {
+            cJSON_AddStringToObject(p, "kind", "profile");
+            cJSON_AddStringToObject(p, "value", device_profile_name(change.profile));
         } else if (change.kind == SHELLY_CHANGE_CALIBRATION) {
             cJSON_AddStringToObject(p, "kind", "cal");
             cJSON_AddStringToObject(p, "value", cal_ratios_is_default(&change.cal) ? "default" : "new");
@@ -854,6 +863,14 @@ static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
     }
     if (strcmp(key, "wifi.password.default") == 0) {
         shelly_wifi_password_stage("");
+        return send_result(req, "200 OK", true, "");
+    }
+    if (strcmp(key, "profile") == 0) {
+        device_profile_t profile;
+        if (!device_profile_parse(json_str(body, "value"), &profile) || !shelly_profile_stage(profile)) {
+            return send_result(req, "400 Bad Request", false,
+                               "This device has no device type to choose, or that type is unknown");
+        }
         return send_result(req, "200 OK", true, "");
     }
     if (strcmp(key, "cancel") == 0) {

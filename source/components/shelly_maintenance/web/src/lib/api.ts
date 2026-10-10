@@ -8,9 +8,14 @@ export type CodeSource = 'sticker' | 'yours' | 'generated' | 'test';
 // code, or none (a device without a sticker code).
 export type WifiSecurity = 'own' | 'sticker' | 'open';
 
+// What the relay is for, on a board that offers the choice (caps.profiles):
+// an outlet that stays on or off, or a garage door opener's short pulse.
+export type Profile = 'outlet' | 'opener';
+
 export interface Pending {
-  kind: 'code' | 'switch' | 'cal' | 'wifi';
-  // code: the new code; switch: the mode; cal: "new" or "default"; wifi: "own" or "default"
+  kind: 'code' | 'switch' | 'cal' | 'wifi' | 'profile';
+  // code: the new code; switch: the mode; cal: "new" or "default"; wifi: "own" or "default";
+  // profile: the device type
   value: string;
   ch: number; // 1-based relay, for switch and cal
   secs: number; // left to press the button 3 times
@@ -20,10 +25,12 @@ export interface Pending {
 export interface State {
   device: { hw: string; variant: string; version: string; mac: string };
   // What this build has: the page shows only the tabs and cards it supports.
-  caps: { relays: number; switch_modes: boolean; meter: boolean; meter_skipped: boolean; diag: boolean; hw: boolean };
+  caps: { relays: number; switch_modes: boolean; meter: boolean; meter_skipped: boolean; diag: boolean; hw: boolean; profiles: boolean };
   relays: boolean[];
   switch: SwitchMode[];
   code: { text: string; source: CodeSource; new: boolean; sticker: string | null };
+  // now: this boot's device type; next: the saved one, from the next normal boot.
+  profile: { now: Profile; next: Profile };
   pending: Pending | null;
   // now: this boot's network; next: the next time Wi-Fi mode starts.
   wifi: { ssid: string; now: WifiSecurity; next: WifiSecurity };
@@ -90,6 +97,7 @@ export type Setting =
   | { key: 'cal.reset' }
   | { key: 'wifi.password'; value: string }
   | { key: 'wifi.password.default' }
+  | { key: 'profile'; value: Profile }
   | { key: 'cancel' };
 
 // Things that happen at once.
@@ -152,6 +160,11 @@ export const MODEL_NAMES: Record<string, string> = {
   Mini1G4: 'Shelly 1 Mini Gen4',
   S1PMG4: 'Shelly 1PM Gen4',
   S2PMG4: 'Shelly 2PM Gen4',
+};
+
+export const PROFILE_NAMES: Record<Profile, string> = {
+  outlet: 'Outlet',
+  opener: 'Garage door opener',
 };
 
 export const MODE_NAMES: Record<SwitchMode, string> = {

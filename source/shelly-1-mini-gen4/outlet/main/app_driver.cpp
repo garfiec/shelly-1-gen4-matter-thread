@@ -26,6 +26,8 @@
 
 #include <relay.h>
 #include <shelly_app.h>
+#include <shelly_pulse.h>
+#include <shelly_settings.h>
 
 using namespace chip::app::Clusters;
 using namespace esp_matter;
@@ -39,7 +41,10 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
     if (endpoint_id == relay_endpoint_id) {
         if (cluster_id == OnOff::Id) {
             if (attribute_id == OnOff::Attributes::OnOff::Id) {
-                err = relay_set(val->val.b);
+                // Opener mode: an On is a momentary pulse that turns OnOff
+                // back off by itself.
+                err = shelly_profile_get() == DEVICE_PROFILE_OPENER ? shelly_pulse_write(endpoint_id, val->val.b)
+                                                                     : relay_set(val->val.b);
             }
         }
     }
@@ -48,6 +53,11 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
 
 esp_err_t app_driver_relay_set_defaults(uint16_t endpoint_id)
 {
+    // Opener mode: the trigger is never closed at boot.
+    if (shelly_profile_get() == DEVICE_PROFILE_OPENER) {
+        return shelly_pulse_set_defaults(endpoint_id);
+    }
+
     esp_err_t err = ESP_OK;
     esp_matter_attr_val_t val = esp_matter_invalid(NULL);
 

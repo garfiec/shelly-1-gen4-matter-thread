@@ -164,6 +164,10 @@ A new password applies the next time the mode starts, so the connection you are 
 
 On the Light, Outlet, Mini, 1PM and 2PM, the page's **Switch** tab sets what the wall switch wired to SW does (on the 2PM, SW1 and SW2 each have their own setting, for relay 1 and relay 2): **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position) or **Disabled**. Choose one, press **Save**, then press the device's button 3 times within 2 minutes, as for the setup code. The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
 
+### Device type (Shelly 1 Mini Gen4)
+
+On the Mini, the **Switch** tab also sets the **Device type**: **Outlet** (the default) or **Garage door opener**, where every toggle closes the relay for half a second. Save it the same way, with 3 presses; it applies once you exit Wi-Fi mode. The same `outlet` firmware file runs both types, and both keep the pairing. Before wiring a garage door, check that the relay has no voltage of its own (a dry contact), and don't wire a door sensor to SW: the Mini runs on mains, so SW carries mains voltage. Opener mode is not yet verified on hardware. See [Device type](BUTTON-AND-LED.md#device-type).
+
 On the 1PM and 2PM, the **Meter** tab shows the meter's live readings (each relay's on the 2PM) and can calibrate the meter against your own plug-in meter, saved the same way with 3 presses. See [Calibrating the meter](PROTECTION.md#calibrating-the-meter).
 
 ---

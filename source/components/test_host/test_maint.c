@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "device_profile.h"
 #include "maintenance_dns.h"
 #include "maintenance_image.h"
 #include "qr_svg.h"
@@ -329,12 +330,29 @@ static void test_wifi_password(void)
     CHECK(wifi_password_valid("20584910137"));
 }
 
+static void test_device_profile(void)
+{
+    device_profile_t p = DEVICE_PROFILE_COUNT;
+    CHECK(device_profile_parse("outlet", &p) && p == DEVICE_PROFILE_OUTLET);
+    CHECK(device_profile_parse("opener", &p) && p == DEVICE_PROFILE_OPENER);
+    CHECK(!device_profile_parse("light", &p));
+    CHECK(!device_profile_parse("Opener", &p));
+    CHECK(!device_profile_parse("", &p));
+    CHECK(!device_profile_parse(NULL, &p));
+    CHECK(strcmp(device_profile_name(DEVICE_PROFILE_OUTLET), "outlet") == 0);
+    CHECK(strcmp(device_profile_name(DEVICE_PROFILE_OPENER), "opener") == 0);
+    CHECK(strcmp(device_profile_name(DEVICE_PROFILE_COUNT), "unknown") == 0);
+    // The saved value is a u8: anything past the last type is not one.
+    CHECK(strcmp(device_profile_name((device_profile_t)200), "unknown") == 0);
+}
+
 int main(void)
 {
     test_image();
     test_dns();
     test_qr_svg();
     test_wifi_password();
+    test_device_profile();
     printf("%d maintenance checks, %d failures\n", s_checks, s_failures);
     return s_failures == 0 ? 0 : 1;
 }

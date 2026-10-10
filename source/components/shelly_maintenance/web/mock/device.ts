@@ -2,7 +2,8 @@
 // be worked on without hardware. Never part of the build.
 //
 //   /__mock?d=2pm       pick a device: light, mini, 1pm, 2pm, 2pm-skipped
-//                       (the Mini has no sticker code: its Wi-Fi network is open)
+//                       (the Mini has no sticker code: its Wi-Fi network is open;
+//                       it alone offers the device type)
 //   /__mock/press       the 3 button presses that save a waiting change
 //   /__mock/offline     stop answering for 10 s (a restart)
 
@@ -38,16 +39,20 @@ function wifiNext() {
   return wifiOwn ? 'own' : dev === 'mini' ? 'open' : 'sticker';
 }
 let saves = 0;
+// The Mini's device type: this boot's, and the saved one.
+const profileNow = 'outlet';
+let profileNext = 'outlet';
 
 function state() {
   const d = DEVICES[dev];
   if (pending && Date.now() > pending.until) pending = null;
   return {
     device: { hw: d.hw, variant: d.variant, version: d.version, mac: '02:00:00:12:34:56' },
-    caps: { relays: d.relays, switch_modes: true, meter: d.meter, meter_skipped: !!d.skipped, diag: true, hw: true },
+    caps: { relays: d.relays, switch_modes: true, meter: d.meter, meter_skipped: !!d.skipped, diag: true, hw: true, profiles: dev === 'mini' },
     relays: relays.slice(0, d.relays),
     switch: modes.slice(0, d.relays),
     code: dev === 'mini' ? { text: '3184-207-5562', source: 'generated', new: false, sticker: null } : { ...code, sticker: STICKER },
+    profile: dev === 'mini' ? { now: profileNow, next: profileNext } : { now: 'outlet', next: 'outlet' },
     wifi: { ssid: `Shelly${d.hw.replace(/^S/, '').replace('Mini1G4', '1MiniG4')}-020000123456`, now: (wifiNow ??= wifiNext()), next: wifiNext() },
     saves,
     pending: pending && {
@@ -196,6 +201,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
         stage('code', text, 0, () => (code = { text, source: back ? 'sticker' : 'yours', new: false }), back);
         return json(res, ok);
       }
+      case 'profile':
+        if (dev !== 'mini' || !['outlet', 'opener'].includes(b.value))
+          return json(res, { ok: false, msg: 'This device has no device type to choose, or that type is unknown' }, 400);
+        stage('profile', b.value, 0, () => (profileNext = b.value));
+        return json(res, ok);
       case 'code.random':
         stage('code', '3184-207-5562', 0, () => (code = { text: '3184-207-5562', source: 'generated', new: true }));
         return json(res, ok);

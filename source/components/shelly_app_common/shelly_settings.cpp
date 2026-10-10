@@ -39,6 +39,7 @@ static const char *NVS_NAMESPACE = "shelly_cfg";
 // One key per wall switch input; SW1 keeps the single-input key.
 static const char *const NVS_KEY_SWITCH_MODE[] = {"sw_mode", "sw_mode2"};
 _Static_assert(RELAY_CHANNELS <= 2, "one switch mode key per channel");
+static const char *NVS_KEY_PROFILE = "profile";
 
 // Guards the switch mode and the waiting change (the maintenance page and
 // the button run on their own tasks). Taken before the setup code's own
@@ -48,6 +49,12 @@ static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 // Read by the switch task on every change: plain aligned words.
 static volatile ui_switch_mode_t s_switch_mode[RELAY_CHANNELS];
 static volatile bool s_loaded = false;
+
+// The device type this boot runs as, and the saved one (they differ once a
+// change is saved, until the next boot).
+static device_profile_t s_profile = DEVICE_PROFILE_OUTLET;
+static device_profile_t s_profile_saved = DEVICE_PROFILE_OUTLET;
+static bool s_profile_loaded = false;
 
 static shelly_change_t s_change;
 static int64_t s_change_at_us = 0;
@@ -95,6 +102,79 @@ ui_switch_mode_t shelly_switch_mode_get_ch(int ch)
 ui_switch_mode_t shelly_switch_mode_get(void)
 {
     return shelly_switch_mode_get_ch(0);
+}
+
+bool shelly_profile_available(void)
+{
+#if CONFIG_SHELLY_HAS_OPENER_MODE && CONFIG_SHELLY_MAINTENANCE
+    return true;
+#else
+    return false;
+#endif
+}
+
+// With s_lock held.
+static void load_profile(void)
+{
+    if (s_profile_loaded) {
+        return;
+    }
+    s_profile_loaded = true;
+    // Without Wi-Fi mode there is no page to change a saved type back: such
+    // a build is always an outlet, like its switch mode is always Toggle.
+    if (!shelly_profile_available()) {
+        return;
+    }
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
+        uint8_t v;
+        if (nvs_get_u8(h, NVS_KEY_PROFILE, &v) == ESP_OK) {
+            if (v < DEVICE_PROFILE_COUNT) {
+                s_profile = (device_profile_t)v;
+            } else {
+                ESP_LOGW(TAG, "Unknown saved device type %u: using outlet", v);
+            }
+        }
+        nvs_close(h);
+    }
+    s_profile_saved = s_profile;
+    ESP_LOGI(TAG, "Device type: %s", device_profile_name(s_profile));
+}
+
+device_profile_t shelly_profile_get(void)
+{
+    pthread_mutex_lock(&s_lock);
+    load_profile();
+    device_profile_t p = s_profile;
+    pthread_mutex_unlock(&s_lock);
+    return p;
+}
+
+device_profile_t shelly_profile_saved(void)
+{
+    pthread_mutex_lock(&s_lock);
+    load_profile();
+    device_profile_t p = s_profile_saved;
+    pthread_mutex_unlock(&s_lock);
+    return p;
+}
+
+static bool save_profile(device_profile_t profile)
+{
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    if (err == ESP_OK) {
+        err = nvs_set_u8(h, NVS_KEY_PROFILE, (uint8_t)profile);
+        if (err == ESP_OK) {
+            err = nvs_commit(h);
+        }
+        nvs_close(h);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Saving the device type failed: %s", esp_err_to_name(err));
+        return false;
+    }
+    return true;
 }
 
 static bool save_switch_mode(int ch, ui_switch_mode_t mode)
@@ -180,6 +260,18 @@ bool shelly_wifi_password_stage(const char *password)
     return true;
 }
 
+bool shelly_profile_stage(device_profile_t profile)
+{
+    if (!shelly_profile_available() || (unsigned)profile >= DEVICE_PROFILE_COUNT) {
+        return false;
+    }
+    shelly_change_t change = {};
+    change.kind = SHELLY_CHANGE_PROFILE;
+    change.profile = profile;
+    shelly_change_stage(&change);
+    return true;
+}
+
 void shelly_change_cancel(void)
 {
     pthread_mutex_lock(&s_lock);
@@ -231,6 +323,15 @@ bool shelly_change_confirm(void)
             break;
         case SHELLY_CHANGE_WIFI_PASSWORD:
             ok = shelly_wifi_password_save(s_change.wifi_password);
+            break;
+        case SHELLY_CHANGE_PROFILE:
+            load_profile();
+            ok = save_profile(s_change.profile);
+            if (ok) {
+                s_profile_saved = s_change.profile;
+                ESP_LOGW(TAG, "Device type saved: %s, from the next normal boot",
+                         device_profile_name(s_change.profile));
+            }
             break;
         case SHELLY_CHANGE_NONE:
         default:

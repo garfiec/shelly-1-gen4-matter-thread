@@ -263,7 +263,7 @@ First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: built 
 - Board NTC temperature, with a trip at 90°C and the die sensor as a fallback.
 - Welded-relay and meter-lost alerts.
 - All the robustness features of Shelly 1 Gen4 2.2.0.
-- Distinct Matter Product ID (`0x8006`).
+- Distinct Matter Product ID (`0x8009`). It was `0x8006` before release, which the Shelly 1 Mini Gen4 Light Switch now uses.
 
 #### Fixed
 - Pairing from Android now completes. The device didn't answer pings on its Thread address, and Android's Matter pairing gives up at "Checking connectivity to Thread network" without one, even though the device was reachable for Matter itself. It now answers ping on every Thread address. Found on a Shelly 1PM Gen4 behind an Aqara border router; it affected every variant.

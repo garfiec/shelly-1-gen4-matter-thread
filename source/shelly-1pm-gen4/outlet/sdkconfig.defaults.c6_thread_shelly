@@ -73,7 +73,7 @@ CONFIG_CHIP_PROJECT_CONFIG="main/CHIPProjectConfig.h"
 
 # Device Identification Options
 # Set a unique variant PID for OTA
-CONFIG_DEVICE_PRODUCT_ID=0x8006
+CONFIG_DEVICE_PRODUCT_ID=0x8009
 
 # Robustness
 

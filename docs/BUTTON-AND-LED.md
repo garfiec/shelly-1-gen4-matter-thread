@@ -112,7 +112,7 @@ Every gesture in every state. A refused action shows three quick flashes (LED-14
 
 ## Wall switch
 
-The SW terminal. It never resets the device, never opens pairing, and never enters Wi-Fi mode, as in stock firmware.
+The SW terminal. It never resets the device, never opens pairing, and never enters Wi-Fi mode. Stock firmware differs: it can factory reset from SW shortly after power-on (see [Stock Firmware Features](STOCK-FEATURES.md#output-and-wall-switch)).
 
 | ID | Variant | State | Result | Notes |
 |---|---|---|---|---|

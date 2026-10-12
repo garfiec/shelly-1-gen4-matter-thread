@@ -27,6 +27,7 @@ This document tracks the current known limitations and the planned work. To prio
 - Shelly 1PM Gen4 hardware verification: pin map on the UL unit, meter calibration, NTC beta, and a trip test on a bench load.
 - Shelly 2PM Gen4: hardware verification of the 1.0.1 metering build, then the Light Switch and Cover (window covering) variants.
 - Shelly's own factory meter calibration, so each device could use its own calibration instead of the reference unit's. On one 2PM it was not in the stock `shelly` partition (which holds Matter attestation, the sticker setup code and factory identity) or in stock's file system. If Shelly keeps it per unit, it is in stock's `nvs`, which the web UI package erases on install: finding it means keeping that partition on a fresh device. The calibration page stays for owners who want to match their own meter.
+- Stock features worth bringing back, from a capture of the stock 1PM Gen4 firmware. First, factory reset and Wi-Fi mode from the wall switch, for devices whose button is out of reach inside a wall box. See [Stock Firmware Features](STOCK-FEATURES.md#candidates-by-priority).
 - Shelly Flood Gen4 support.
 - NTC on the Shelly 1 Mini Gen4 and other devices that carry one (the Shelly 1PM Gen4 already uses its NTC).
 - A Sleepy End Device variant for battery and solar constrained installs, trading mesh extension for lower power.

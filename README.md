@@ -139,6 +139,7 @@ Most of it is in [`docs/`](docs/), with build [`scripts/`](scripts/), the change
 - [GPIO Map](docs/GPIO.md) — ESP-Shelly-C68F pin assignments for Gen4 devices
 - [Certification](docs/CERTIFICATION.md) — uncertified status and test credentials
 - [Roadmap](docs/ROADMAP.md) — current known limitations and planned work
+- [Stock Firmware Features](docs/STOCK-FEATURES.md) — what stock Shelly firmware offers, how this firmware covers it, and candidates to add
 - [Contributing](docs/CONTRIBUTING.md) — reporting bugs and the firmware filename convention
 - [Contributors](docs/CONTRIBUTORS.md) — people who have helped move the project forward
 - [Security policy](SECURITY.md) — reporting a vulnerability and how issues are triaged

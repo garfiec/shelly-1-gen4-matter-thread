@@ -28,6 +28,13 @@ __pycache__/
 # Sensitive — never commit original firmware backup
 shelly-*-gen4-stock-*.bin
 
+# Sensitive — a stock device capture (scripts/capture-shelly-webui.py) holds
+# its identity and configuration
+shelly-capture-*
+
+# Claude Code worktrees
+.claude/worktrees/
+
 # Release binaries, zip, ota — these go in GitHub Releases
 automatous-io-shelly-*-gen4-*.bin
 automatous-io-shelly-*-gen4-*.zip

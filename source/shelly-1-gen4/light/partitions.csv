@@ -1,6 +1,7 @@
 # Offsets follow the stock Shelly 1 Gen4 layout. The Web UI OTA writes its A/B app
 # slots where this table expects. fs_0, fs_1, zb_storage and shelly are stock regions
-# this firmware does not use; fs_0 stays because the OTA package requires an fs part.
+# this firmware never writes (it only reads shelly, for the sticker's setup code);
+# fs_0 stays because the OTA package requires an fs part.
 # There is no fctry or phy_init partition: the DAC is compiled in and PHY data is in the app.
 # Name,      Type, SubType, Offset,    Size,     Flags
 otadata,     data, ota,     0x11000,   0x2000,

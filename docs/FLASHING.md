@@ -24,7 +24,7 @@ Once the firmware is up and running, updates are applied through Home Assistant 
 
 > 💡 **Bench testing note.** The Shelly can be fully flashed, commissioned, and tested over the USB-UART 3.3V line, but **the relay will not physically click at 3.3V**. The relay coil needs full mains voltage to actuate. Bench testing over 3.3V verifies firmware flash success, Matter commissioning, GPIO behavior, LED states, and that your smart home app can send commands. You will not hear the relay click during bench testing. This is expected, not a bug. Verify everything else works first, then install with confidence and skip the headache of pulling the Shelly back out of the wall if something didn't work.
 
-> ⚠️ **Warranty and responsibility.** Installing this firmware voids your Shelly warranty, and Shelly cannot provide technical support for a device running third-party code. You assume all responsibility for any damage, data loss, or device failure. Flashing also removes the factory keys that enable Shelly Cloud and official OTA updates. Only the UART method can capture the full-chip backup that restores them, so a web UI flash is permanent and a UART flash is reversible only if you keep that backup. **See [Warranty, Factory Keys, and Reversibility](REVERSIBILITY.md) before attempting to flash.**
+> ⚠️ **Warranty and responsibility.** Installing this firmware voids your Shelly warranty, and Shelly cannot provide technical support for a device running third-party code. You assume all responsibility for any damage, data loss, or device failure. Flashing also takes the factory keys that enable Shelly Cloud and official OTA updates out of use: a UART install erases them with the rest of the chip, and a web UI install leaves them in flash but replaces the stock firmware that uses them. Only the UART method can capture the full-chip backup that brings stock back, so a web UI flash is permanent and a UART flash is reversible only if you keep that backup. **See [Warranty, Factory Keys, and Reversibility](REVERSIBILITY.md) before attempting to flash.**
 
 
 ## Contents
@@ -193,7 +193,7 @@ ESPConnect is a browser-based ESP32 flashing tool built on Web Serial. No instal
 
 > This step is essential. The backup is the only way to restore your device to its fully functional factory state. **I strongly suggest you do not skip it**.
 
-> The full-chip image includes the device's factory-provisioned keys, which enable Shelly Cloud and official OTA updates. This is why a complete backup is what makes restoration possible: a partial backup cannot bring those keys back, and without them the change is one-way.
+> The full-chip image includes the device's factory-provisioned keys, which enable Shelly Cloud and official OTA updates. This is why a complete backup is what makes restoration possible: a partial backup may miss something restoration depends on, and without a complete image the change is one-way.
 
 1. In the left navigation, click **Flash Tools**.
 2. Click **Download Flash Backup**.

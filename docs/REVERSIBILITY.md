@@ -23,7 +23,7 @@ This page explains what installing third-party firmware does to a Shelly Gen4 de
 
 ## What flashing changes
 
-Installing this firmware replaces the stock Shelly firmware, and that has consequences beyond the new features. It voids your warranty, and Shelly cannot provide technical support for a device running third-party code. It also removes the factory keys. Stock firmware uses factory-provisioned keys to reach Shelly Cloud and to receive official OTA updates; once the stock firmware is overwritten those services are unavailable until the original firmware is restored.
+Installing this firmware replaces the stock Shelly firmware, and that has consequences beyond the new features. It voids your warranty, and Shelly cannot provide technical support for a device running third-party code. It also takes the factory keys out of use. Stock firmware uses factory-provisioned keys to reach Shelly Cloud and to receive official OTA updates. A UART install as documented erases the whole chip, keys included. A web UI install leaves the keys in flash but replaces the stock firmware that uses them. Either way those services are unavailable until the original firmware is restored.
 
 Installing over the web UI has also been verified to burn a permanent marker into the chip's eFuse, which appears to record that the device has run non-Shelly firmware. It does not change how the device works and it does not block a return to stock, but it cannot be removed. See [The eFuse marker](#the-efuse-marker) for additional detail.
 
@@ -37,7 +37,18 @@ None of this is a criticism of Shelly. The device is deliberately flashable, whi
 
 Shelly devices are provisioned at the factory with per-device keys and certificates. These authenticate the device to Shelly Cloud and to the official OTA update service, and they are unique per device.
 
-The keys reside in flash, in a factory or NVS type partition. A full-chip backup captures them regardless of which partition they sit in, because it copies every byte of the 8MB flash. Anything bound to eFuse, the one-time-programmable silicon, cannot be erased by flashing and survives no matter what you do. The recoverable-or-not question is therefore entirely about the flash-resident, and therefore entirely about whether your backup captured them. Restore the full flash image and the keys come back. Lose the image and they are gone.
+The keys reside in flash, in Shelly's `shelly` partition (a data partition at 0x7f0000, 64 KB), as seen on a Shelly 2PM Gen4 on stock 2.0.1. A full-chip backup captures them regardless of which partition they sit in, because it copies every byte of the 8MB flash. Anything bound to eFuse, the one-time-programmable silicon, cannot be erased by flashing and survives no matter what you do. The recoverable-or-not question is therefore entirely about the flash-resident keys, and about whether your backup captured them. Restore the full flash image and the keys come back.
+
+What each install does to the `shelly` partition:
+
+| Install or update | `shelly` partition |
+|---|---|
+| UART, as in the [Flashing Guide](FLASHING.md) (esptool or ESPConnect) | Erased, with the whole chip |
+| UART, `idf.py flash` from a source build | Kept: it writes only the bootloader, partition table, otadata and app |
+| Shelly web UI | Kept: the package writes the bootloader, partition table, otadata, `nvs`, `app_0` and `fs_0`, never `shelly`. Seen intact afterwards on one 2PM Gen4 |
+| Matter OTA and the Wi-Fi mode page | Kept: they write only the inactive app slot |
+
+This firmware reads the `shelly` partition, for the sticker's Matter setup code, and never writes or erases it. Kept keys are not a way back on their own: the web UI install still overwrites the bootloader, partition table, stock app slot and settings, and returning to working stock from that state without a backup has not been tried.
 
 ---
 
@@ -48,7 +59,7 @@ Reversibility depends on two things, not one. The first is the flash method, mea
 | Method | Backup possible | Full-chip backup captures keys | Outcome |
 |---|---|---|---|
 | UART | Yes, reads the chip before writing | Yes | Recoverable |
-| Web UI | No, write-only | No image exists | One-way |
+| Web UI | No, write-only | No image exists (the keys stay in flash, unused) | One-way |
 
 This is not purely a matter of UART being safe and OTA being unsafe. A UART user who takes only a partial backup, or who runs `erase-flash` without a complete image to restore, is in the same one-way situation as a web UI user. Completeness, not just method, is what protects you. The rule that actually keeps you safe is to capture a full 8MB backup before flashing, or to accept that the change may be permanent.
 
@@ -72,7 +83,7 @@ For the exact backup and restore steps, see [Restoring stock firmware](FLASHING.
 
 Shelly's web UI installs firmware by uploading a file over the network, with no UART connection. This path is confirmed working on the Shelly 1 Gen4 and Shelly 1 Mini Gen4 and verified on stock firmware 1.7.0, 1.7.5, and 2.0.0. For the steps, see [Flash with the Shelly web UI](FLASHING.md#flash-with-the-shelly-web-ui).
 
-A web UI flash cannot read the chip before writing, so no full-chip backup can be made, and the factory keys cannot be saved. A device flashed this way cannot be returned to a fully functional stock state unless a UART backup was captured first.
+A web UI flash cannot read the chip before writing, so no full-chip backup can be made, and what the install overwrites (the bootloader, partition table, stock app slot and settings) cannot be saved. The `shelly` partition with the factory keys is left in place, but that alone has not been shown to be enough to return to stock. A device flashed this way cannot be returned to a fully functional stock state unless a UART backup was captured first.
 
 The web UI is the easiest way in, and a UART backup is the only way back. If keeping the option to restore to stock matters to you, take a full-chip UART backup before flashing over the web UI or use the UART flash path which captures that backup as part of flashing.
 
@@ -94,7 +105,7 @@ The eFuse marker above is written by Shelly's own updater during a web UI instal
 
 - **It never writes eFuses.** Every build runs `scripts/check-reversibility.py`, which fails the build if the app or bootloader links any ESP-IDF function that burns eFuses. Every `idf.py` flash target (the full flash and the app, bootloader and partition-table flashes) waits for the check, and the packaging scripts (`make-matter-ota.py`, `make-webui-ota-zip.py`) run it again before they package a build.
 - **No secure boot, flash encryption, eFuse anti-rollback or ROM download lockout.** Each of these burns eFuses, and several would block a UART restore. The build fails if any of them is enabled.
-- **Stock partition layout.** The build fails unless it uses a custom partition table at the stock address (0x10000) and that table matches the stock Shelly Gen4 layout exactly. The stock `zb_storage` and `shelly` regions are never touched.
+- **Stock partition layout.** The build fails unless it uses a custom partition table at the stock address (0x10000) and that table matches the stock Shelly Gen4 layout exactly. The stock `zb_storage` and `shelly` regions are never written or erased; `shelly` is only read, for the sticker's setup code.
 - **The setup code lives in the settings (NVS) partition.** The device's own Matter setup code is saved alongside its pairings. The Shelly sticker's code is untouched: a stock restore from your backup makes the sticker work again.
 - **The Wi-Fi uploader writes only the app slots.** [Wi-Fi maintenance mode](UPDATING.md#wi-fi-maintenance-mode) installs an update the same way a Matter OTA does, into the inactive app slot. It never writes the bootloader, the partition table or the stock `shelly` and `zb_storage` regions, and it only accepts an image built for the same Shelly model.
 - **Firmware rollback without eFuses.** A new firmware image that fails to start is rolled back to the previous one (see [Updating](UPDATING.md)). This uses the bootloader's app rollback, which keeps its state in flash, not ESP-IDF's eFuse-based anti-rollback.

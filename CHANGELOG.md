@@ -8,7 +8,7 @@ New changes go under `### [Unreleased]` in **All devices**; the release workflow
 
 ## All devices
 
-### [Unreleased]
+### [2026.10.0] - 2026-10-12
 
 One firmware per device, with the device type chosen on the Wi-Fi mode page. **Not yet verified on hardware.**
 

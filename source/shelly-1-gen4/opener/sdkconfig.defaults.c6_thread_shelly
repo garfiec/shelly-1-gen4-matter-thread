@@ -57,7 +57,7 @@ CONFIG_ENABLE_CHIP_SHELL=y
 # Shelly 1 Gen4 Settings
 
 # Endpoint count
-CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=4
+CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=5
 
 # Flash
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
@@ -94,3 +94,12 @@ CONFIG_ESP_TIMER_TASK_STACK_SIZE=6144
 
 # The device's own Matter setup code (shelly_setup_code.cpp)
 CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y
+
+# Device types (one firmware for every Shelly 1 Gen4 product line; this
+# line's type is the default). See source/components/shelly_app_common/Kconfig.
+CONFIG_SHELLY_TYPE_OUTLET=y
+CONFIG_SHELLY_TYPE_LIGHT=y
+CONFIG_SHELLY_TYPE_OPENER=y
+CONFIG_SHELLY_OPENER_CONTACT_SENSOR=y
+CONFIG_SHELLY_TYPE_LIGHT_SWITCH=y
+CONFIG_SHELLY_DEFAULT_TYPE_OPENER=y

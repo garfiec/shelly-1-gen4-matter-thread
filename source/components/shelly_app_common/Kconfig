@@ -14,20 +14,63 @@ endmenu
 
 menu "Shelly device type"
 
-    config SHELLY_HAS_OPENER_MODE
-        bool "Offer a garage door opener mode on the Wi-Fi mode page"
+    # What the relay can be for, chosen on the Wi-Fi mode page
+    # (device_profile.h). A build without Wi-Fi mode is always its default
+    # type. One build per device is packaged once per Matter Product ID, each
+    # with that product line's type as the default.
+
+    config SHELLY_TYPE_OUTLET
+        bool "Offer Outlet (On/Off Plug-in Unit)"
+        default y
+
+    config SHELLY_TYPE_LIGHT
+        bool "Offer Light (On/Off Light)"
+        default n
+
+    config SHELLY_TYPE_OPENER
+        bool "Offer Garage door opener (a toggle is a pulse)"
         default n
         help
-            For a one-relay board with a dry contact: the Wi-Fi mode page lets
-            the owner choose what the relay is for, an outlet (on or off) or a
-            garage door opener (a short pulse per toggle). Both use the same
-            Matter endpoints, so changing it keeps the pairing. The choice is
-            saved with 3 presses of the button and kept through factory
-            resets. A build without Wi-Fi mode is always an outlet.
+            For a relay with a dry contact only.
+
+    config SHELLY_OPENER_CONTACT_SENSOR
+        bool "The Opener reads a door contact sensor on SW"
+        depends on SHELLY_TYPE_OPENER
+        default n
+        help
+            The Shelly 1 Gen4 Opener: SW is a door sensor, reported as a Matter
+            Contact Sensor endpoint, and never switches the relay. Without it
+            (a mains-powered board, whose SW carries mains voltage) the Opener
+            has the Outlet's endpoints and the wall switch modes.
+
+    config SHELLY_TYPE_LIGHT_SWITCH
+        bool "Offer Light Switch (SW drives bound lights)"
+        default n
+
+    choice SHELLY_DEFAULT_TYPE
+        prompt "Default device type"
+        default SHELLY_DEFAULT_TYPE_OUTLET
+        help
+            The type of a device with none saved: a fresh install, or one
+            updated from a build of a single type (this product line's).
+
+        config SHELLY_DEFAULT_TYPE_OUTLET
+            bool "Outlet"
+            depends on SHELLY_TYPE_OUTLET
+        config SHELLY_DEFAULT_TYPE_LIGHT
+            bool "Light"
+            depends on SHELLY_TYPE_LIGHT
+        config SHELLY_DEFAULT_TYPE_OPENER
+            bool "Garage door opener"
+            depends on SHELLY_TYPE_OPENER
+        config SHELLY_DEFAULT_TYPE_LIGHT_SWITCH
+            bool "Light Switch"
+            depends on SHELLY_TYPE_LIGHT_SWITCH
+    endchoice
 
     config SHELLY_PULSE_MS
         int "Opener pulse length (ms)"
-        depends on SHELLY_HAS_OPENER_MODE
+        depends on SHELLY_TYPE_OPENER
         default 500
         range 100 5000
         help

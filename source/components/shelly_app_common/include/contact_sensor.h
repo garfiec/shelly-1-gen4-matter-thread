@@ -20,6 +20,7 @@
 
 #include <esp_err.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // Door-position contact sensor on the Shelly 1 Gen4 SW terminal (GPIO10).
 //
@@ -41,6 +42,8 @@
 // interrupt-driven input and starts the debounce task. Must be called
 // before contact_sensor_read_state(). Returns ESP_OK on success.
 esp_err_t contact_sensor_init(void);
+// The Contact Sensor endpoint, once created.
+void contact_sensor_set_endpoint(uint16_t endpoint_id);
 
 // Read the current contact state as the Matter StateValue
 // (true = closed, false = open), applying CONTACT_OPEN_IS_HIGH. Used to

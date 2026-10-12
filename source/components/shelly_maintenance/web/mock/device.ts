@@ -14,15 +14,17 @@ import { readFileSync } from 'node:fs';
 type Dev = 'light' | 'mini' | '1pm' | '2pm' | '2pm-skipped';
 
 const DEVICES: Record<Dev, { hw: string; variant: string; version: string; relays: number; meter: boolean; skipped?: boolean }> = {
-  light: { hw: 'S1G4', variant: 'light', version: '2.2.0', relays: 1, meter: false },
-  mini: { hw: 'Mini1G4', variant: 'outlet', version: '1.1.0', relays: 1, meter: false },
-  '1pm': { hw: 'S1PMG4', variant: 'outlet', version: '1.0.2', relays: 1, meter: true },
-  '2pm': { hw: 'S2PMG4', variant: 'light', version: '1.0.1', relays: 2, meter: true },
-  '2pm-skipped': { hw: 'S2PMG4', variant: 'light', version: '1.0.1', relays: 2, meter: false, skipped: true },
+  light: { hw: 'S1G4', variant: 'light', version: '3.0.0', relays: 1, meter: false },
+  mini: { hw: 'Mini1G4', variant: 'outlet', version: '3.0.0', relays: 1, meter: false },
+  '1pm': { hw: 'S1PMG4', variant: 'outlet', version: '3.0.0', relays: 1, meter: true },
+  '2pm': { hw: 'S2PMG4', variant: 'light', version: '3.0.0', relays: 2, meter: true },
+  '2pm-skipped': { hw: 'S2PMG4', variant: 'light', version: '3.0.0', relays: 2, meter: false, skipped: true },
 };
 
 // A made-up code, never a real device's.
-const STICKER = '2058-491-0137';
+// A valid code (check digit and passcode), with a real QR in mock/qr-sample.svg
+// (passcode 49217385, discriminator 0xA5C, VID 0xFFF1, PID 0x8008). Not a real device's.
+const STICKER = '2490-013-0037';
 
 let dev: Dev = (process.env.MOCK as Dev) in DEVICES ? (process.env.MOCK as Dev) : '2pm';
 let relays = [true, false];
@@ -39,9 +41,21 @@ function wifiNext() {
   return wifiOwn ? 'own' : dev === 'mini' ? 'open' : 'sticker';
 }
 let saves = 0;
-// The Mini's device type: this boot's, and the saved one.
-const profileNow = 'outlet';
-let profileNext = 'outlet';
+// The device types each board offers (like device_profile.h), this boot's
+// type, and the saved one. Composition: a change between two types with the
+// same one keeps the pairing.
+const TYPES: Record<Dev, string[]> = {
+  light: ['light', 'outlet', 'opener', 'light-switch'],
+  mini: ['light', 'outlet', 'opener', 'light-switch'],
+  '1pm': ['light', 'outlet'],
+  '2pm': ['light', 'outlet'],
+  '2pm-skipped': ['light', 'outlet'],
+};
+const contact = () => dev === 'light';
+const comp = (t: string) =>
+  t === 'light' ? 'light' : t === 'light-switch' ? 'ls' : t === 'opener' && contact() ? 'plug-contact' : 'plug';
+let profileNow = DEVICES[dev].variant;
+let profileNext = profileNow;
 let outletMode = 'toggle';
 
 function state() {
@@ -49,11 +63,17 @@ function state() {
   if (pending && Date.now() > pending.until) pending = null;
   return {
     device: { hw: d.hw, variant: d.variant, version: d.version, mac: '02:00:00:12:34:56' },
-    caps: { relays: d.relays, switch_modes: true, meter: d.meter, meter_skipped: !!d.skipped, diag: true, hw: true, profiles: dev === 'mini' },
+    caps: { relays: d.relays, switch_modes: true, meter: d.meter, meter_skipped: !!d.skipped, diag: true, hw: true, profiles: TYPES[dev].length > 1 },
     relays: relays.slice(0, d.relays),
     switch: modes.slice(0, d.relays),
     code: dev === 'mini' ? { text: '3184-207-5562', source: 'generated', new: false, sticker: null } : { ...code, sticker: STICKER },
-    profile: dev === 'mini' ? { now: profileNow, next: profileNext } : { now: 'outlet', next: 'outlet' },
+    profile: {
+      now: profileNow,
+      next: profileNext,
+      types: TYPES[dev].map((v) => ({ v, repair: comp(v) !== comp(profileNow) })),
+      opener_contact: contact(),
+    },
+    crashed: false,
     wifi: { ssid: `Shelly${d.hw.replace(/^S/, '').replace('Mini1G4', '1MiniG4')}-020000123456`, now: (wifiNow ??= wifiNext()), next: wifiNext() },
     saves,
     presses: presses(),
@@ -152,6 +172,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     const d = url.searchParams.get('d') as Dev;
     if (d in DEVICES) dev = d;
     wifiNow = null;
+    profileNow = profileNext = DEVICES[dev].variant;
     res.statusCode = 302;
     res.setHeader('Location', '/');
     return res.end();
@@ -179,7 +200,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   if (p === '/api/hw') return json(res, hw);
   if (p === '/qr.svg') {
     res.setHeader('Content-Type', 'image/svg+xml');
-    return res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29"><rect width="29" height="29" fill="#fff"/><path d="M4 4h7v7H4zM18 4h7v7h-7zM4 18h7v7H4zM13 13h3v3h-3zM18 18h2v2h-2zM22 20h3v5h-3z"/></svg>');
+    return res.end(readFileSync(new URL('./qr-sample.svg', import.meta.url)));
   }
   if (p === '/diag.txt') {
     res.setHeader('Content-Type', 'text/plain');
@@ -216,11 +237,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
         return json(res, ok);
       }
       case 'profile':
-        if (dev !== 'mini' || !['outlet', 'opener'].includes(b.value))
+        if (!TYPES[dev].includes(b.value))
           return json(res, { ok: false, msg: 'This device has no device type to choose, or that type is unknown' }, 400);
+        if (comp(b.value) !== comp(profileNow) && !b.repair)
+          return json(res, { ok: false, msg: 'This type needs the device to be paired again: confirm that on the page' }, 400);
         stage('profile', b.value, 0, () => {
-          // Like the device: opener sets Push button, outlet restores the mode it had.
-          if (b.value !== profileNext) {
+          // Like the device: an Opener without a door sensor sets Push button,
+          // and leaving it restores the mode SW had.
+          if (b.value !== profileNext && !contact() && (b.value === 'opener' || profileNext === 'opener')) {
             if (b.value === 'opener') {
               outletMode = modes[0];
               modes[0] = 'push';

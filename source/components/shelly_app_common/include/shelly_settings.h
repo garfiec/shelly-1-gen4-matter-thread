@@ -53,13 +53,29 @@ ui_switch_mode_t shelly_switch_mode_get_ch(int ch);
 
 // The device type this boot runs as: read once, the first time it's asked
 // for (app_main asks before anything else uses the relay), and kept for the
-// whole boot, since a saved change applies from the next boot. Outlet if
-// the build doesn't offer the choice, has no Wi-Fi mode, or none is saved.
+// whole boot, since a saved change applies from the next boot. The build's
+// default type (CONFIG_SHELLY_DEFAULT_TYPE) if it doesn't offer a choice,
+// has no Wi-Fi mode, or none is saved; with none saved it is saved then.
 device_profile_t shelly_profile_get(void);
 // The saved device type: the one the next boot runs as.
 device_profile_t shelly_profile_saved(void);
-// Whether this build offers the choice (CONFIG_SHELLY_HAS_OPENER_MODE).
+// Whether this build offers a choice (more than one CONFIG_SHELLY_TYPE_*,
+// and Wi-Fi mode to choose on).
 bool shelly_profile_available(void);
+// The types this build offers (DEVICE_PROFILE_BIT()s), and its default.
+uint32_t shelly_profile_offered(void);
+device_profile_t shelly_profile_default(void);
+// The board's Opener reads a door sensor on SW (CONFIG_SHELLY_OPENER_CONTACT_SENSOR).
+bool shelly_opener_contact(void);
+// True if changing to `profile` changes the Matter composition, so the
+// device has to be paired again.
+bool shelly_profile_needs_repair(device_profile_t profile);
+
+// The Matter composition of the type this boot runs as, and the marker of
+// the one the device last ran with (device_profile.h repair_decide()).
+device_comp_t shelly_comp_now(void);
+bool shelly_comp_marker_get(device_comp_t *out);
+bool shelly_comp_marker_set(device_comp_t comp);
 
 // ---- The change staged by the page ----
 
@@ -104,8 +120,9 @@ bool shelly_cal_stage(int ch, const cal_ratios_t *ratios);
 bool shelly_wifi_password_stage(const char *password);
 
 // Stage a device type. False if this build doesn't offer the choice or the
-// type is not valid.
-bool shelly_profile_stage(device_profile_t profile);
+// type, or if the change needs the device paired again and the page didn't
+// confirm that (`repair_confirmed`).
+bool shelly_profile_stage(device_profile_t profile, bool repair_confirmed);
 
 void shelly_change_cancel(void);
 

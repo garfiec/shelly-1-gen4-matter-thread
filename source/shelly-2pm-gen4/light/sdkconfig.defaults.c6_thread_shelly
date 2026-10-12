@@ -118,3 +118,9 @@ CONFIG_SHELLY_HW_SNAPSHOT=y
 # logs: give the two tightest ones room.
 CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=3072
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+
+# Device types (one firmware for every Shelly 2PM Gen4 product line; this line's
+# type is the default). See source/components/shelly_app_common/Kconfig.
+CONFIG_SHELLY_TYPE_OUTLET=y
+CONFIG_SHELLY_TYPE_LIGHT=y
+CONFIG_SHELLY_DEFAULT_TYPE_LIGHT=y

@@ -109,7 +109,11 @@ function settle(s: State) {
     const next = s.profile.next;
     // Saving a type also sets the wall switch mode that suits it.
     const sw = s.caps.switch_modes ? ` The wall switch is now ${MODE_NAMES[s.switch[0]] ?? s.switch[0]}.` : '';
-    if (next === w.value) say('profile', `Saved: ${PROFILE_NAMES[next]}, once the device is back in normal operation.${sw}`, 'good');
+    const repair = s.profile.types.find((t) => t.v === next)?.repair;
+    const after = repair
+      ? ' When you exit Wi-Fi mode, the device clears its pairings and restarts ready to pair: pair it again with the code on the Pairing tab.'
+      : ' It applies once the device is back in normal operation.';
+    if (next === w.value) say('profile', `Saved: ${PROFILE_NAMES[next]}.${after}${sw}`, 'good');
     else say('profile', `The change was not saved. It is still ${PROFILE_NAMES[next] ?? next}.`, 'bad');
   } else if (w.kind === 'wifi') {
     if (s.saves === w.saves) say('wifi', 'The change was not saved.', 'bad');

@@ -36,6 +36,7 @@
 #include <app/clusters/ota-requestor/OTARequestorInterface.h>
 #include <app/server/CommissioningWindowManager.h>
 #include <app/server/Server.h>
+#include <platform/ConnectivityManager.h>
 
 #include <relay.h>
 #include <shelly_diag_log.h>
@@ -113,6 +114,64 @@ static void factory_reset_work(intptr_t arg)
     esp_matter::factory_reset();
 }
 
+// ---------------------------------------------------------------------------
+// A device type change that needs the device paired again
+// ---------------------------------------------------------------------------
+//
+// The page saves the type; this boot creates its endpoints. If they differ
+// from the ones the device last ran with (the composition marker) and it is
+// still paired, the pairings no longer match: clear them, and the device
+// restarts ready to pair. Unlike the button's factory reset, the setup code
+// and Wi-Fi mode password stay: the owner asked for this on the page. The
+// marker is only rewritten once nothing is paired, so a power cut at any
+// point just runs the reset again (device_profile.h repair_decide()).
+
+static bool s_repair_waiting = false;
+
+// The running image is a new one not yet confirmed: a restart now rolls it back.
+static bool image_pending_verify(void)
+{
+    esp_ota_img_states_t state;
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    return running != nullptr && esp_ota_get_state_partition(running, &state) == ESP_OK &&
+           state == ESP_OTA_IMG_PENDING_VERIFY;
+}
+
+// On the Matter thread (the fabric table needs the stack lock).
+static void repair_check_work(intptr_t arg)
+{
+    device_comp_t marker = DEVICE_COMP_NONE;
+    bool present = shelly_comp_marker_get(&marker);
+    device_comp_t now = shelly_comp_now();
+    bool paired = chip::Server::GetInstance().GetFabricTable().FabricCount() != 0 ||
+                  chip::DeviceLayer::ConnectivityMgr().IsThreadProvisioned();
+    switch (repair_decide(present, marker, now, paired, image_pending_verify())) {
+    case REPAIR_NOTHING:
+        break;
+    case REPAIR_WRITE_MARKER:
+        shelly_comp_marker_set(now);
+        break;
+    case REPAIR_WAIT:
+        ESP_LOGW(TAG, "Device type changed: the pairings are cleared once this firmware confirms itself");
+        s_repair_waiting = true;
+        break;
+    case REPAIR_RESET:
+        ESP_LOGW(TAG, "Device type changed its Matter endpoints: clearing the pairings to pair again");
+        esp_matter::factory_reset();
+        break;
+    }
+}
+
+void shelly_ui_image_confirmed(void)
+{
+    if (s_repair_waiting) {
+        s_repair_waiting = false;
+        if (chip::DeviceLayer::PlatformMgr().ScheduleWork(repair_check_work, 0) != CHIP_NO_ERROR) {
+            ESP_LOGE(TAG, "Failed to schedule the device type check");
+        }
+    }
+}
+
 void shelly_ui_matter_started(void)
 {
     if (reset_record_valid()) {
@@ -121,9 +180,84 @@ void shelly_ui_matter_started(void)
         if (chip::DeviceLayer::PlatformMgr().ScheduleWork(factory_reset_work, 0) != CHIP_NO_ERROR) {
             ESP_LOGE(TAG, "Failed to schedule the factory reset");
         }
+        // The next boot finds nothing paired and records the composition.
         return;
     }
     reset_record_clear();
+    if (chip::DeviceLayer::PlatformMgr().ScheduleWork(repair_check_work, 0) != CHIP_NO_ERROR) {
+        ESP_LOGE(TAG, "Failed to schedule the device type check");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Crash guard
+// ---------------------------------------------------------------------------
+//
+// A normal boot that crashes before Matter is up restarts in a few
+// seconds, too soon for the 5 s hold, and a confirmed image is never rolled
+// back: without a serial cable, the device would be lost. Count the normal
+// boots that end in a crash or watchdog; after CRASH_GUARD_LIMIT in a row,
+// restart into Wi-Fi maintenance mode, whose page can change the device
+// type or install firmware. RTC_NOINIT memory, trusted only with its magic
+// and check and never after power-on, like the records above.
+
+#define CRASH_GUARD_MAGIC 0x48535243u  // 'CRSH'
+#define CRASH_GUARD_LIMIT 3
+
+typedef struct {
+    uint32_t magic;
+    uint32_t count;
+    uint32_t entered;  // Maintenance mode was entered because of it
+    uint32_t check;
+} crash_guard_t;
+
+static RTC_NOINIT_ATTR crash_guard_t s_crash_guard;
+
+static uint32_t crash_guard_check(const crash_guard_t *g)
+{
+    return ~(g->magic ^ (g->count * 0x9E3779B9u) ^ (g->entered << 16));
+}
+
+static void crash_guard_store(uint32_t count, uint32_t entered)
+{
+    s_crash_guard.magic = CRASH_GUARD_MAGIC;
+    s_crash_guard.count = count;
+    s_crash_guard.entered = entered;
+    s_crash_guard.check = crash_guard_check(&s_crash_guard);
+}
+
+static bool crash_guard_valid(void)
+{
+    return s_crash_guard.magic == CRASH_GUARD_MAGIC && s_crash_guard.check == crash_guard_check(&s_crash_guard) &&
+           esp_reset_reason() != ESP_RST_POWERON;
+}
+
+void shelly_crash_guard_boot(void)
+{
+#if CONFIG_SHELLY_MAINTENANCE
+    esp_reset_reason_t reason = esp_reset_reason();
+    bool crashed = reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT || reason == ESP_RST_TASK_WDT ||
+                   reason == ESP_RST_WDT;
+    uint32_t count = crashed && crash_guard_valid() ? s_crash_guard.count + 1 : (crashed ? 1 : 0);
+    if (count < CRASH_GUARD_LIMIT) {
+        crash_guard_store(count, 0);
+        return;
+    }
+    ESP_LOGE(TAG, "Failed to start %u times in a row: restarting into Wi-Fi maintenance mode", (unsigned)count);
+    crash_guard_store(0, 1);
+    shelly_maintenance_request();
+    esp_restart();
+#endif
+}
+
+void shelly_crash_guard_clear(void)
+{
+    crash_guard_store(0, 0);
+}
+
+bool shelly_crash_guard_entered(void)
+{
+    return crash_guard_valid() && s_crash_guard.entered != 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -365,14 +499,6 @@ void shelly_maintenance_carry_relay(uint16_t endpoint_id)
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-
-static bool image_pending_verify(void)
-{
-    esp_ota_img_states_t state;
-    const esp_partition_t *running = esp_ota_get_running_partition();
-    return running != nullptr && esp_ota_get_state_partition(running, &state) == ESP_OK &&
-           state == ESP_OTA_IMG_PENDING_VERIFY;
-}
 
 static bool ota_download_busy(void)
 {

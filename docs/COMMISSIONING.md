@@ -14,6 +14,7 @@ This guide covers pairing a freshly flashed Shelly Gen4 device to your smart hom
 - [Apple Home](#apple-home)
 - [Google Home, Alexa, Home Assistant](#google-home-alexa-home-assistant)
 - [Commissioning to multiple ecosystems](#commissioning-to-multiple-ecosystems)
+- [Changing the device type](#changing-the-device-type)
 - [Opener variant](#opener-variant)
 - [Troubleshooting](#troubleshooting)
 - [Factory reset](#factory-reset)
@@ -87,7 +88,7 @@ Enter [your setup code](#your-setup-code) manually.
 4. Press Add Anyway when prompted. This is expected. See [Certification](CERTIFICATION.md) for why.
 5. Name the device and place it in a room.
 
-> Note for users coming from HomeKit Bridge or Home Assistant setups. HomeKit's reclassify as Fan, Light, or Switch option, available when bridging a stock Shelly through Home Assistant, is not available with native Matter devices. The Matter device type is declared by the firmware at flash time and cannot be changed in the Apple Home app. If you need a different device type, flash the [variant](../README.md#variants) that provides it.
+> Note for users coming from HomeKit Bridge or Home Assistant setups. HomeKit's reclassify as Fan, Light, or Switch option, available when bridging a stock Shelly through Home Assistant, is not available with native Matter devices. The Matter device type is declared by the firmware and cannot be changed in the Apple Home app. To change it, choose another device type on the Wi-Fi mode page (see [Device type](BUTTON-AND-LED.md#device-type)).
 
 ---
 
@@ -95,11 +96,11 @@ Enter [your setup code](#your-setup-code) manually.
 
 Google Home and Alexa support Matter commissioning through their respective apps. Enter [your setup code](#your-setup-code) when prompted. Google and Alexa hubs have not been directly tested, but the firmware should work with any Matter-compliant hub. Let us know and we will update the compatible hubs section.
 
-Home Assistant commissions through its Matter integration. Use the same setup code. Because this firmware uses Matter test credentials, Home Assistant's Matter Server needs Test Net DCL enabled before it will commission an uncertified device like this one.
+Home Assistant commissions through its Matter integration (**Settings → Connectivity → Matter → Add device**). Use the same setup code. Because this firmware uses Matter test credentials, Home Assistant's Matter Server needs Test Net DCL enabled before it will commission an uncertified device like this one.
 
-Turn on **Enable test-net DCL usage** in the Matter Server add-on configuration and restart the add-on. This is the same setting that later lets Home Assistant serve [Matter OTA updates](UPDATING.md), so enabling it now covers both commissioning and updates.
+Turn on **Enable test-net DCL usage** in the Matter Server app's configuration (**Settings → Apps → Matter Server → Configuration**) and restart the app. This is the same setting that later lets Home Assistant serve [Matter OTA updates](UPDATING.md), so enabling it now covers both commissioning and updates.
 
-Verified on **Matter Server add-on, version 9.0.2**.
+Verified on the **Matter Server app (then called an add-on), version 9.0.2**.
 
 ---
 
@@ -108,7 +109,7 @@ Verified on **Matter Server add-on, version 9.0.2**.
 Matter lets one device belong to several ecosystems at the same time. This is called multi-fabric, or Multi-Admin. You do not run the initial setup again for each one. Instead, an ecosystem the device already belongs to opens a short pairing window and hands out a fresh, temporary setup code that the next ecosystem uses to join.
 
 1. Commission the device to your first ecosystem as described above.
-2. In that ecosystem, open the device and choose the option to add it to another platform. In Apple Home this is "Turn On Pairing Mode" in the accessory settings. In Home Assistant it is the share or "Add to another fabric" action on the device page.
+2. In that ecosystem, open the device and choose the option to add it to another platform. In Apple Home this is "Turn On Pairing Mode" in the accessory settings. In Home Assistant, go to **Settings → Connectivity → Matter → Devices**, select the device, and choose **Share device**.
 3. The first ecosystem displays a temporary setup code.
 4. In the second ecosystem's app, start adding a Matter device and enter that temporary code, not the device's own setup code.
 5. Repeat for any further ecosystems.
@@ -116,6 +117,10 @@ Matter lets one device belong to several ecosystems at the same time. This is ca
 While the pairing window is open the status LED shows the rapid pairing blink, and it returns to solid when the window closes. You can also open a 3-minute window from the device itself: press the button 3 times. The second ecosystem then asks for [your setup code](#your-setup-code), not a temporary one.
 
 ---
+
+## Changing the device type
+
+The device type (Light, Outlet, Garage door opener, Light Switch) is chosen on the Wi-Fi mode page. A type with other Matter endpoints doesn't fit the existing pairings: when you exit Wi-Fi mode, the device clears its pairings and restarts ready to pair. Remove it from your apps first, then pair it again as above. On the Shelly 1 Mini Gen4, Outlet and Garage door opener keep the pairing. See [Device type](BUTTON-AND-LED.md#device-type).
 
 ## Opener variant
 
@@ -138,7 +143,7 @@ Home Assistant exposes the Opener as a switch for the trigger and a binary senso
 
 ### Commissioning hangs in Home Assistant
 
-If Home Assistant's Matter integration hangs during commissioning or shows "setting up" indefinitely, restart the Matter Server add-on.
+If Home Assistant's Matter integration hangs during commissioning or shows "setting up" indefinitely, restart the Matter Server app.
 
 1. Go to Settings, then Apps, then Matter Server, then Restart.
 2. Wait 60 seconds for the full restart.

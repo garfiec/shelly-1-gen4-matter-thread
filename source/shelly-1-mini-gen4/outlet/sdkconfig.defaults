@@ -25,7 +25,7 @@ CONFIG_LWIP_HOOK_IP6_ROUTE_DEFAULT=y
 CONFIG_LWIP_HOOK_ND6_GET_GW_DEFAULT=y
 
 # This example only use 2 dynamic endpoints
-CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=2
+CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=5
 
 # Button
 CONFIG_BUTTON_PERIOD_TIME_MS=20
@@ -157,5 +157,3 @@ CONFIG_SUPPORT_PUSH_AV_STREAM_TRANSPORT_CLUSTER=n
 # The device's own Matter setup code (shelly_setup_code.cpp)
 CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y
 
-# Outlet or garage door opener, chosen on the Wi-Fi mode page (device_profile.h)
-CONFIG_SHELLY_HAS_OPENER_MODE=y

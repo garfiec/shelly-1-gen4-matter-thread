@@ -101,3 +101,9 @@ CONFIG_SUPPORT_POWER_TOPOLOGY_CLUSTER=y
 
 # The device's own Matter setup code (shelly_setup_code.cpp)
 CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y
+
+# Device types (one firmware for every Shelly 1PM Gen4 product line; this line's
+# type is the default). See source/components/shelly_app_common/Kconfig.
+CONFIG_SHELLY_TYPE_OUTLET=y
+CONFIG_SHELLY_TYPE_LIGHT=y
+CONFIG_SHELLY_DEFAULT_TYPE_OUTLET=y

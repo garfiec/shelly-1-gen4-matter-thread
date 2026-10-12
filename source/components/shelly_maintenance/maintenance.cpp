@@ -450,6 +450,23 @@ static esp_err_t state_get(httpd_req_t *req)
     cJSON *prof = cJSON_AddObjectToObject(root, "profile");
     cJSON_AddStringToObject(prof, "now", device_profile_name(shelly_profile_get()));
     cJSON_AddStringToObject(prof, "next", device_profile_name(shelly_profile_saved()));
+    // The types this build offers, in the order the page lists them, and
+    // whether choosing each means pairing the device again.
+    cJSON *types = cJSON_AddArrayToObject(prof, "types");
+    static const device_profile_t ORDER[] = {DEVICE_PROFILE_LIGHT, DEVICE_PROFILE_OUTLET, DEVICE_PROFILE_OPENER,
+                                             DEVICE_PROFILE_LIGHT_SWITCH};
+    for (device_profile_t t : ORDER) {
+        if (!device_profile_offered(shelly_profile_offered(), t)) {
+            continue;
+        }
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "v", device_profile_name(t));
+        cJSON_AddBoolToObject(item, "repair", shelly_profile_needs_repair(t));
+        cJSON_AddItemToArray(types, item);
+    }
+    cJSON_AddBoolToObject(prof, "opener_contact", shelly_opener_contact());
+    // Wi-Fi mode was started because normal boots kept crashing.
+    cJSON_AddBoolToObject(root, "crashed", shelly_crash_guard_entered());
 
     // The setup code in use, and the sticker's beside another code.
     setup_code_t code;
@@ -919,9 +936,17 @@ static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
     }
     if (strcmp(key, "profile") == 0) {
         device_profile_t profile;
-        if (!device_profile_parse(json_str(body, "value"), &profile) || !shelly_profile_stage(profile)) {
+        if (!device_profile_parse(json_str(body, "value"), &profile) ||
+            !device_profile_offered(shelly_profile_offered(), profile) || !shelly_profile_available()) {
             return send_result(req, "400 Bad Request", false,
                                "This device has no device type to choose, or that type is unknown");
+        }
+        // A type with other Matter endpoints clears the pairings at the next
+        // normal boot: the page must have said so (a stale page may not).
+        bool repair = cJSON_IsTrue(cJSON_GetObjectItem(body, "repair"));
+        if (!shelly_profile_stage(profile, repair)) {
+            return send_result(req, "400 Bad Request", false,
+                               "This type needs the device to be paired again: confirm that on the page");
         }
         return staged_reply(req);
     }
@@ -1041,8 +1066,8 @@ static esp_err_t update_post(httpd_req_t *req)
     }
 
     const esp_app_desc_t *running = esp_app_get_description();
-    // Versions only order the builds of one variant: each variant has its
-    // own version line, so a variant change is never "older".
+    // Another product line's image installs whatever its version
+    // (docs/UPDATING.md); only one line's own builds are ordered.
     bool variant_change = strcmp(info.project, running->project_name) != 0;
     if (!variant_change && mi_version_cmp(info.version, running->version) < 0 && !allow_older) {
         free(buf);
@@ -1113,8 +1138,8 @@ static esp_err_t update_post(httpd_req_t *req)
     json_safe(version, sizeof(version), info.version);
     char msg[240];
     snprintf(msg, sizeof(msg),
-             variant_change ? "Installed the %s variant, version %s. The device restarts now. It is a different "
-                              "device type: remove it from your controller and pair it again"
+             variant_change ? "Installed the %s product line, version %s. The device restarts now and keeps its "
+                              "device type, but its Matter product ID changes, which your controller may not expect"
                             : "Installed %s version %s. The device restarts now and confirms the update after a minute",
              project, version);
     send_result(req, "200 OK", true, msg);

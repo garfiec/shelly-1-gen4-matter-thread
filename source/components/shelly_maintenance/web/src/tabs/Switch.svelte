@@ -15,7 +15,7 @@
 {/if}
 {#if s.caps.switch_modes}
   {#each s.switch as _, i (i)}
-    <Card title={two ? `Wall switch ${i + 1} (SW${i + 1})` : s.profile?.next === 'opener' ? 'Wall switch (garage door opener)' : 'Wall switch'}>
+    <Card title={two ? `Wall switch ${i + 1} (SW${i + 1})` : s.profile?.next === 'opener' && !s.profile.opener_contact ? 'Wall switch (garage door opener)' : 'Wall switch'}>
       <SwitchMode ch={i + 1} {two} />
     </Card>
   {/each}

@@ -66,6 +66,12 @@
     </div>
   {/if}
   {#if !app.done}<PendingBanner />{/if}
+  {#if app.state?.crashed && !app.done}
+    <div class="offline" role="alert">
+      The device started in Wi-Fi mode by itself because it failed to start normally 3 times in a row. Choose another
+      device type on the Switch tab, or install firmware on the Update tab.
+    </div>
+  {/if}
 </header>
 
 <main>

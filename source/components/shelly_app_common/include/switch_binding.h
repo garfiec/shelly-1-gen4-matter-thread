@@ -20,6 +20,7 @@
 
 #include <esp_err.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // Detached wall switch on the SW terminal (GPIO10 on Shelly 1 Gen4).
 //
@@ -39,6 +40,12 @@
 //
 // Returns ESP_OK on success, error code on failure.
 esp_err_t switch_binding_init(void);
+// Register the binding dispatch callbacks. Without them, the binding
+// manager resolves the bound peer and opens a CASE session but never sends
+// the command.
+void switch_binding_client_init(void);
+// The Light Switch and Contact Sensor endpoints, once created.
+void switch_binding_set_endpoints(uint16_t switch_endpoint, uint16_t contact_endpoint);
 
 // Send Toggle to the bound lights and report the position: the device UI's
 // handling of a wall-switch change on this variant (its switch_handler).

@@ -17,6 +17,12 @@
 //
 
 // app_main.cpp
+//
+// The Shelly 1PM Gen4, as an Outlet or a Light, the device type chosen on the Wi-Fi
+// mode page (device_profile.h). Both create the same endpoints in the same
+// order; only the relay endpoints' device type differs, so a change between
+// them means pairing again. Built once per product line (Matter Product ID),
+// each with its type as the default.
 
 #include <esp_err.h>
 #include <esp_log.h>
@@ -31,6 +37,7 @@
 #include <app_priv.h>
 #include <shelly_app.h>
 #include <shelly_setup_code.h>
+#include <shelly_settings.h>
 #if CONFIG_SHELLY_MAINTENANCE
 #include <maintenance.h>
 #endif
@@ -38,6 +45,8 @@
 #include <thermal.h>
 #include <switch_input.h>
 #include <relay.h>
+#include <protection.h>
+#include <metering.h>
 #if CHIP_DEVICE_CONFIG_ENABLE_THREAD
 #include <platform/ESP32/OpenthreadLauncher.h>
 #endif
@@ -54,7 +63,10 @@ using namespace chip::DeviceLayer;
 #endif
 
 static const char *TAG = "app_main";
-uint16_t light_endpoint_id = 0;
+// The On/Off (Plug-in Unit) endpoint that drives the relay.
+uint16_t relay_endpoint_id = 0;
+// The Temperature Sensor endpoint that reports the board NTC temperature
+// (the die temperature if the NTC is open).
 uint16_t temperature_endpoint_id = 0;
 
 using namespace esp_matter;
@@ -94,21 +106,46 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
 }
 
 // The button and the wall switch toggle the relay through the OnOff
-// attribute, so Matter sees every change. What each input does in each
-// state is the device UI: docs/BUTTON-AND-LED.md.
+// attribute, so Matter sees every change. Protection sees each toggle
+// first, through its local-toggle hook: a toggle from Off is a deliberate
+// On and clears an overcurrent trip. What each input does in each state is
+// the device UI: docs/BUTTON-AND-LED.md.
 static bool app_toggle(void)
 {
-    return shelly_onoff_toggle(light_endpoint_id);
+    return shelly_onoff_toggle(relay_endpoint_id);
 }
 
 static bool app_toggle_to(bool on)
 {
-    return shelly_onoff_toggle_to(light_endpoint_id, on);
+    return shelly_onoff_toggle_to(relay_endpoint_id, on);
 }
 
 static void app_switch_changed(bool level, void *arg)
 {
     shelly_ui_switch_changed(switch_input_active(level));
+}
+
+static const shelly_ui_config_t UI_CONFIG = {
+    .toggle = app_toggle,
+    .local_toggle = shelly_local_relay_toggle,
+    .toggle_to = app_toggle_to,
+    .local_toggle_to = shelly_local_relay_toggle_to,
+    .switch_role = UI_SWITCH_TOGGLE,
+};
+
+// The relay as an On/Off Plug-in Unit (Outlet: presents as an outlet) or
+// an On/Off Light (Light), the device type chosen on the Wi-Fi mode page.
+// Both have the same clusters; only the device type differs.
+static endpoint_t *create_relay_endpoint(node_t *node)
+{
+    if (shelly_profile_get() == DEVICE_PROFILE_LIGHT) {
+        on_off_light::config_t light_config;
+        light_config.on_off.on_off = DEFAULT_POWER;
+        return on_off_light::create(node, &light_config, ENDPOINT_FLAG_NONE, nullptr);
+    }
+    on_off_plug_in_unit::config_t plugin_config;
+    plugin_config.on_off.on_off = DEFAULT_POWER;
+    return on_off_plug_in_unit::create(node, &plugin_config, ENDPOINT_FLAG_NONE, nullptr);
 }
 
 extern "C" void app_main()
@@ -128,36 +165,42 @@ extern "C" void app_main()
     if (shelly_maintenance_boot_pending(&relay_was_on)) {
         relay_init();
         thermal_init();
+        protection_init();
+        protection_attach_local_inputs();
+        // The meter feeds protection and the page's readings and calibration.
+        // Skipped after a Wi-Fi mode boot that died with it running, so Wi-Fi
+        // mode stays usable; overcurrent and overvoltage are then off here,
+        // so the relays start off rather than restoring a load unprotected.
+        bool meter_on = shelly_maintenance_meter_allowed();
+        if (meter_on) {
+            metering_init();
+        }
         switch_input_init(app_switch_changed, nullptr);
-        shelly_ui_config_t maintenance_ui = {
-            .toggle = app_toggle,
-            .local_toggle = shelly_local_relay_toggle,
-            .toggle_to = app_toggle_to,
-            .local_toggle_to = shelly_local_relay_toggle_to,
-            .switch_role = UI_SWITCH_TOGGLE,
-        };
-        shelly_ui_init(&maintenance_ui);
-        shelly_maintenance_run(relay_was_on, shelly_local_relay_toggle);
+        shelly_ui_init(&UI_CONFIG);
+        // The relay gate refuses a latched trip anyway; this keeps the
+        // restore from even trying.
+        shelly_maintenance_run(relay_was_on && meter_on && !protection_is_latched(), shelly_local_relay_toggle);
     }
 #endif
+
+    // After 3 normal boots in a row that crashed, Wi-Fi mode instead.
+    shelly_crash_guard_boot();
 
     MEMORY_PROFILER_DUMP_HEAP_STAT("Bootup");
 
     // Initialize subsystems. Order matters for safety:
     // relay first so the GPIO is in known-safe state before anything else.
-    // thermal second so overtemp protection is active as early as possible.
+    // thermal and electrical protection next, so their gates hold before
+    // anything can turn the relay on. Metering starts the meter task that
+    // feeds protection, and decides (up to 3s) whether this board is on AC
+    // mains and advertises the meter.
     // switch_input and button last for user-facing inputs.
     relay_init();
     thermal_init();
+    protection_init();
+    metering_init();
     switch_input_init(app_switch_changed, nullptr);
-    shelly_ui_config_t ui_config = {
-        .toggle = app_toggle,
-        .local_toggle = shelly_local_relay_toggle,
-        .toggle_to = app_toggle_to,
-        .local_toggle_to = shelly_local_relay_toggle_to,
-        .switch_role = UI_SWITCH_TOGGLE,
-    };
-    shelly_ui_init(&ui_config);
+    shelly_ui_init(&UI_CONFIG);
 
     // Create a Matter node and add the mandatory Root Node device type on endpoint 0
     node::config_t node_config;
@@ -168,23 +211,44 @@ extern "C" void app_main()
 
     MEMORY_PROFILER_DUMP_HEAP_STAT("node created");
 
-    on_off_light::config_t light_config;
-    light_config.on_off.on_off = DEFAULT_POWER;
+    // On/Off Plug-in Unit drives the outlet relay (presents as an outlet,
+    // not a light). Latching on/off; the wall switch (SW) and button toggle it.
 
     // endpoint handles can be used to add/modify clusters.
-    endpoint_t *endpoint = on_off_light::create(node, &light_config, ENDPOINT_FLAG_NONE, nullptr);
-    ABORT_APP_ON_FAILURE(endpoint != nullptr, ESP_LOGE(TAG, "Failed to create on_off_light endpoint"));
+    endpoint_t *endpoint = create_relay_endpoint(node);
+    ABORT_APP_ON_FAILURE(endpoint != nullptr, ESP_LOGE(TAG, "Failed to create the relay endpoint"));
 
-    light_endpoint_id = endpoint::get_id(endpoint);
-    ESP_LOGI(TAG, "Light created with endpoint_id %d", light_endpoint_id);
+    relay_endpoint_id = endpoint::get_id(endpoint);
+    ESP_LOGI(TAG, "Relay created with endpoint_id %d", relay_endpoint_id);
 
-    // Temperature Sensor endpoint exposes the die temperature the thermal
-    // monitor already polls. Starts null until the first reading; min/max
-    // match the 20-100°C range the sensor is configured for in thermal.cpp.
+    // Power metering on the same endpoint (Electrical Sensor device type),
+    // only on a board that has seen AC mains. Adds clusters, no endpoint.
+    metering_add_to_endpoint(endpoint);
+
+    // Hook the OnOff commands so protection can tell deliberate user
+    // actions from internal writes.
+    protection_attach_endpoint(relay_endpoint_id);
+
+    // Back from Wi-Fi maintenance mode: its relay state is the previous
+    // state StartUpOnOff applies to (docs/BUTTON-AND-LED.md P-03). Before
+    // the latch below, which wins.
+    shelly_maintenance_carry_relay(relay_endpoint_id);
+
+    // An overcurrent trip survives a software reset. Store Off before Matter
+    // starts, so neither StartUpOnOff nor the boot defaults can re-energize
+    // the load; the protection gate refuses them anyway.
+    if (protection_is_latched()) {
+        esp_matter_attr_val_t off = esp_matter_bool(false);
+        attribute::set_val(attribute::get(relay_endpoint_id, chip::app::Clusters::OnOff::Id,
+                                          chip::app::Clusters::OnOff::Attributes::OnOff::Id), &off, false);
+    }
+
+    // Temperature Sensor endpoint exposes the board NTC temperature the
+    // thermal monitor already polls. Starts null until the first reading.
     temperature_sensor::config_t temp_sensor_config;
     temp_sensor_config.temperature_measurement.measured_value = nullable<int16_t>();
-    temp_sensor_config.temperature_measurement.min_measured_value = 2000;
-    temp_sensor_config.temperature_measurement.max_measured_value = 10000;
+    temp_sensor_config.temperature_measurement.min_measured_value = -4000;
+    temp_sensor_config.temperature_measurement.max_measured_value = 15000;
 
     endpoint = temperature_sensor::create(node, &temp_sensor_config, ENDPOINT_FLAG_NONE, nullptr);
     ABORT_APP_ON_FAILURE(endpoint != nullptr, ESP_LOGE(TAG, "Failed to create temperature_sensor endpoint"));
@@ -192,7 +256,7 @@ extern "C" void app_main()
     temperature_endpoint_id = endpoint::get_id(endpoint);
     ESP_LOGI(TAG, "Temperature sensor created with endpoint_id %d", temperature_endpoint_id);
 
-    thermal_set_endpoints(light_endpoint_id, temperature_endpoint_id);
+    thermal_set_endpoints(relay_endpoint_id, temperature_endpoint_id);
 
     // Boot reason and hardware faults on the root endpoint's
     // GeneralDiagnostics. Attributes only; no endpoint or cluster is added.
@@ -224,10 +288,6 @@ extern "C" void app_main()
 #endif
 #endif // CONFIG_ENABLE_SET_CERT_DECLARATION_API
 
-    // Back from Wi-Fi maintenance mode: its relay state is the previous
-    // state StartUpOnOff applies to (docs/BUTTON-AND-LED.md P-03).
-    shelly_maintenance_carry_relay(light_endpoint_id);
-
     // The diagnostics provider must be in place before Matter starts: the
     // GeneralDiagnostics boot event reads it at startup.
     shelly_diagnostics_install();
@@ -243,8 +303,11 @@ extern "C" void app_main()
     // Publish boot-time faults, start the watchdog feed and OTA confirmation.
     shelly_app_started();
 
+    // Energy accuracy, the restored energy total, and meter reporting.
+    metering_matter_started();
+
     // Starting driver with default values
-    app_driver_light_set_defaults(light_endpoint_id);
+    app_driver_relay_set_defaults(relay_endpoint_id);
 
 #if CONFIG_ENABLE_ENCRYPTED_OTA
     err = esp_matter_ota_requestor_encrypted_init(s_decryption_key, s_decryption_key_len);

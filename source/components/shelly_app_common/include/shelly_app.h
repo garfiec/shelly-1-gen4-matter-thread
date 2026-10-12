@@ -235,3 +235,16 @@ void shelly_maintenance_carry_relays(const uint16_t *endpoint_ids, int count);
 // Internal: run by shelly_app_started(). Performs a factory reset that was
 // requested before Matter was up (see shelly_ui.cpp).
 void shelly_ui_matter_started(void);
+
+// The health task confirmed a new image (no rollback any more): a device
+// type change waiting for that clears the pairings now.
+void shelly_ui_image_confirmed(void);
+
+// Call at the start of every normal boot, after the maintenance check: after
+// 3 normal boots in a row that ended in a crash or watchdog, it restarts
+// into Wi-Fi maintenance mode instead (no return). shelly_crash_guard_clear()
+// once the boot has run well; shelly_crash_guard_entered() tells the
+// maintenance boot it was started this way.
+void shelly_crash_guard_boot(void);
+void shelly_crash_guard_clear(void);
+bool shelly_crash_guard_entered(void);

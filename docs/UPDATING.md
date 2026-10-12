@@ -39,7 +39,7 @@ ESPConnect is the full reinstall covered in the [Flashing Guide](FLASHING.md#fla
 
 Because the firmware uses Matter test credentials, only the Home Assistant ecosystem is supported and documented in this repo to serve OTA updates. Home Assistant's Matter Server acts as the OTA provider; you place an `.ota` image where it can read it, and it offers that image to any eligible commissioned device whose vendor and product ID match.
 
-Verified on **Matter Server add-on, version 9.0.2**.
+Verified on the **Matter Server app (then called an add-on), version 9.0.2**.
 
 ### 1. Enable Test Net DCL
 
@@ -47,35 +47,35 @@ The Matter Server only serves uncertified OTA images when Test Net DCL is enable
 
 1. Go to **Settings → Apps → Matter Server → Configuration**.
 2. Turn on **Enable test-net DCL usage**.
-3. **Restart** the add-on.
+3. **Restart** the app.
 
-Enabling it also points the server at its OTA folder, `/addon_configs/core_matter_server/updates/`. Without Test Net DCL, custom `.ota` files are ignored.
+Enabling it also points the server at its OTA folder: `core_matter_server/updates` in the app configs share. Without Test Net DCL, custom `.ota` files are ignored.
 
 ### 2. Get the OTA image
 
-Download the `.ota` for your device and variant from the [latest release](../../../releases/latest), or [build it yourself](#building-the-ota-image). The image is named `automatous-io-{hardware}-{variant}-vX.Y.Z.ota`. Its version must be higher than what the device is running, or the server has nothing newer to offer.
+Download the `.ota` files for your device from the [latest release](../../../releases/latest), or [build them yourself](#building-the-ota-image). Each device's firmware is packaged once per product line (Light, Outlet and so on), and each image is named `automatous-io-{hardware}-{line}-vX.Y.Z.ota`. A device only accepts the image of the line it was installed from (Matter matches them by product ID), whatever device type you've chosen since, so the simplest is to put all of your device's `.ota` files in the folder: each device picks its own. The version must be higher than what the device is running, or the server has nothing newer to offer.
 
 ### 3. Place the image
 
-The OTA folder lives inside the add-on's config directory. The simplest way to reach it is the Samba Share add-on.
+The OTA folder lives inside the app's config directory. The simplest way to reach it is the **Samba share** app.
 
-1. Install and start the **Samba Share** add-on if you have not already.
-2. From your computer, open the `addon_configs` share, then `core_matter_server`, then `updates` (full path `/addon_configs/core_matter_server/updates/`). Create the `updates` folder if it does not exist.
+1. Install and start the **Samba share** app (**Settings → Apps → Install app**) if you have not already.
+2. From your computer, open the `app_configs` share (called `addon_configs` in older versions), then `core_matter_server`, then `updates`. Create the `updates` folder if it does not exist.
 3. Copy the `.ota` file into `updates`.
 
-### 4. Restart the add-on to import
+### 4. Restart the app to import
 
-The server scans the `updates` folder **at startup**. Restart the Matter Server add-on to import the image right away rather than waiting for the next restart or OTA update availability interval.
+The server scans the `updates` folder **at startup**. Restart the Matter Server app to import the image right away rather than waiting for the next restart or OTA update availability interval.
 
 1. **Settings → Apps → Matter Server → Restart.**
-2. Watch the add-on log. On a successful import it logs `Imported OTA file: …`, and the `.ota` **disappears** from the `updates` folder. That is expected: the server copies the image into its own storage location and deletes the source. The image is now loaded.
+2. Watch the app's log. On a successful import it logs `Imported OTA file: …`, and the `.ota` **disappears** from the `updates` folder. That is expected: the server copies the image into its own storage location and deletes the source. The image is now loaded.
 
 ### 5. Install the update
 
 Once the image is loaded, the update is available in two places. Use whichever you prefer:
 
 - On the device page in Home Assistant, where its firmware update appears.
-- In the Matter Server add-on, by selecting the node and choosing **Update**.
+- In the Matter Server app's dashboard, by selecting the node and choosing **Update** (the dashboard changed in app version 9; if you don't see it, use the device page above).
 
 1. Trigger the update from either location above.
 2. The device downloads over Thread, writes its inactive slot, verifies, and reboots into the new firmware. If the update does not appear right away, the device queries on its own timer; power-cycling it prompts an immediate check.
@@ -90,7 +90,7 @@ Once the image is loaded, the update is available in two places. Use whichever y
 
 While a Matter update downloads and installs, the status LED blinks slowly and evenly, 1 s on and 1 s off (LED-16 in [Button, Switch and LED](BUTTON-AND-LED.md)). Don't unplug the device while it does. It then restarts into the new firmware.
 
-> 💡 **One image updates every matching device.** The provider offers the stored image by vendor and product ID; a single `.ota` updates every device of that variant on your Thread network. Publish once, and each matching device picks it up the next time it checks in.
+> 💡 **One image updates every matching device.** The provider offers the stored image by vendor and product ID; a single `.ota` updates every device of that product line on your Thread network. Publish once, and each matching device picks it up the next time it checks in.
 
 > **Updating to a release with per-device setup codes.** Your pairings are kept. After the update the device uses its own [setup code](COMMISSIONING.md#your-setup-code), normally the one on its Shelly sticker, so the shared test code `3497-011-2332` stops working for new pairing windows (3 presses of the button, or adding it to another ecosystem). Read the new code from the Wi-Fi mode page before you need it. If the update rolls back, the older firmware uses the test code again.
 
@@ -128,7 +128,7 @@ The hold is refused (three quick flashes) within 60 seconds of an update, becaus
 
 If the page doesn't work in your browser, `http://192.168.33.1/recovery` is a simple install page that does only step 3, with no code shared with the main page.
 
-To install an older version of the same variant, tick **Allow installing an older version** first. An image for a different variant of the same hardware (for example Outlet onto a device running Light) installs whatever its version, since each variant has its own version numbers, but it is a different Matter device type: remove the device from your controller and pair it again afterward.
+To install an older version, tick **Allow installing an older version** first. Use the image of the product line the device was installed from (the Home tab shows it as Variant). An image from another product line of the same hardware installs whatever its version and keeps the device type you chose, but it changes the device's Matter product ID, which existing pairings may not expect: change the device type on the Switch tab instead.
 
 ### 4. Back to normal
 

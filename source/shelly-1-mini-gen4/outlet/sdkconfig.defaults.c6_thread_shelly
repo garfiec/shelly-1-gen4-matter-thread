@@ -57,7 +57,7 @@ CONFIG_ENABLE_CHIP_SHELL=y
 # Shelly 1 Mini Gen4 Settings
 
 # Endpoint count
-CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=3
+CONFIG_ESP_MATTER_MAX_DYNAMIC_ENDPOINT_COUNT=5
 
 # Flash
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
@@ -95,5 +95,11 @@ CONFIG_ESP_TIMER_TASK_STACK_SIZE=6144
 # The device's own Matter setup code (shelly_setup_code.cpp)
 CONFIG_CUSTOM_COMMISSIONABLE_DATA_PROVIDER=y
 
-# Outlet or garage door opener, chosen on the Wi-Fi mode page (device_profile.h)
-CONFIG_SHELLY_HAS_OPENER_MODE=y
+# Device types (one firmware for every Shelly 1 Mini Gen4 product line;
+# this line's type is the default). The Opener has no door sensor: SW
+# carries mains voltage. See source/components/shelly_app_common/Kconfig.
+CONFIG_SHELLY_TYPE_OUTLET=y
+CONFIG_SHELLY_TYPE_LIGHT=y
+CONFIG_SHELLY_TYPE_OPENER=y
+CONFIG_SHELLY_TYPE_LIGHT_SWITCH=y
+CONFIG_SHELLY_DEFAULT_TYPE_OUTLET=y

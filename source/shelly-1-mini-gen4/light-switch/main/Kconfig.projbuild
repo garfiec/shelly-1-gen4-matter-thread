@@ -1,11 +1,2 @@
-menu "Example Configuration"
-
-    config ENABLE_MEMORY_PROFILING
-        bool "Enable Memory Profiling"
-        default n
-        help
-            Enable this option to include memory profiling features in the example.
-            This will allow you to monitor memory usage during runtime.
-
-endmenu
-
+# The Shelly 1 Mini Gen4 app and board options, shared by every product line.
+rsource "../../app/Kconfig.app"

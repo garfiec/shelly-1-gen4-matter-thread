@@ -40,6 +40,9 @@ static const char *NVS_NAMESPACE = "shelly_cfg";
 static const char *const NVS_KEY_SWITCH_MODE[] = {"sw_mode", "sw_mode2"};
 _Static_assert(RELAY_CHANNELS <= 2, "one switch mode key per channel");
 static const char *NVS_KEY_PROFILE = "profile";
+// The Matter composition the device last ran with (device_comp_t): the one
+// its pairings were made for.
+static const char *NVS_KEY_COMP = "comp";
 // SW1's mode while it was an outlet, restored when it goes back to one.
 static const char *NVS_KEY_OUTLET_SWITCH_MODE = "sw_mode_out";
 
@@ -59,8 +62,39 @@ static volatile bool s_loaded = false;
 
 // The device type this boot runs as, and the saved one (they differ once a
 // change is saved, until the next boot).
-static device_profile_t s_profile = DEVICE_PROFILE_OUTLET;
-static device_profile_t s_profile_saved = DEVICE_PROFILE_OUTLET;
+#if CONFIG_SHELLY_DEFAULT_TYPE_LIGHT
+#define DEFAULT_PROFILE DEVICE_PROFILE_LIGHT
+#elif CONFIG_SHELLY_DEFAULT_TYPE_OPENER
+#define DEFAULT_PROFILE DEVICE_PROFILE_OPENER
+#elif CONFIG_SHELLY_DEFAULT_TYPE_LIGHT_SWITCH
+#define DEFAULT_PROFILE DEVICE_PROFILE_LIGHT_SWITCH
+#else
+#define DEFAULT_PROFILE DEVICE_PROFILE_OUTLET
+#endif
+
+static const uint32_t OFFERED_PROFILES = 0
+#if CONFIG_SHELLY_TYPE_OUTLET
+    | DEVICE_PROFILE_BIT(DEVICE_PROFILE_OUTLET)
+#endif
+#if CONFIG_SHELLY_TYPE_OPENER
+    | DEVICE_PROFILE_BIT(DEVICE_PROFILE_OPENER)
+#endif
+#if CONFIG_SHELLY_TYPE_LIGHT
+    | DEVICE_PROFILE_BIT(DEVICE_PROFILE_LIGHT)
+#endif
+#if CONFIG_SHELLY_TYPE_LIGHT_SWITCH
+    | DEVICE_PROFILE_BIT(DEVICE_PROFILE_LIGHT_SWITCH)
+#endif
+    ;
+
+#if CONFIG_SHELLY_OPENER_CONTACT_SENSOR
+#define OPENER_CONTACT true
+#else
+#define OPENER_CONTACT false
+#endif
+
+static device_profile_t s_profile = DEFAULT_PROFILE;
+static device_profile_t s_profile_saved = DEFAULT_PROFILE;
 static bool s_profile_loaded = false;
 
 static shelly_change_t s_change;
@@ -111,14 +145,33 @@ ui_switch_mode_t shelly_switch_mode_get(void)
     return shelly_switch_mode_get_ch(0);
 }
 
+uint32_t shelly_profile_offered(void)
+{
+    return OFFERED_PROFILES;
+}
+
+device_profile_t shelly_profile_default(void)
+{
+    return DEFAULT_PROFILE;
+}
+
+bool shelly_opener_contact(void)
+{
+    return OPENER_CONTACT;
+}
+
 bool shelly_profile_available(void)
 {
-#if CONFIG_SHELLY_HAS_OPENER_MODE && CONFIG_SHELLY_MAINTENANCE
-    return true;
+#if CONFIG_SHELLY_MAINTENANCE
+    // More than one type offered.
+    return (OFFERED_PROFILES & (OFFERED_PROFILES - 1)) != 0;
 #else
     return false;
 #endif
 }
+
+// One setting in NVS_NAMESPACE; what names it in the log.
+static bool save_u8(const char *key, uint8_t value, const char *what);
 
 // With s_lock held.
 static void load_profile(void)
@@ -128,21 +181,32 @@ static void load_profile(void)
     }
     s_profile_loaded = true;
     // Without Wi-Fi mode there is no page to change a saved type back: such
-    // a build is always an outlet, like its switch mode is always Toggle.
+    // a build is always its default type, like its switch mode is always
+    // Toggle.
     if (!shelly_profile_available()) {
         return;
     }
+    bool found = false;
     nvs_handle_t h;
     if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
         uint8_t v;
         if (nvs_get_u8(h, NVS_KEY_PROFILE, &v) == ESP_OK) {
-            if (v < DEVICE_PROFILE_COUNT) {
+            found = true;
+            if (device_profile_offered(OFFERED_PROFILES, (device_profile_t)v)) {
                 s_profile = (device_profile_t)v;
             } else {
-                ESP_LOGW(TAG, "Unknown saved device type %u: using outlet", v);
+                ESP_LOGW(TAG, "Saved device type %u not offered by this build: using %s", v,
+                         device_profile_name(DEFAULT_PROFILE));
             }
         }
         nvs_close(h);
+    }
+    // None saved: the first boot after a fresh install, or after an update
+    // from a build of one type (this product line's, the default). Save it,
+    // so a later install of another product line's image (another default)
+    // can't change the device's endpoints under its pairings.
+    if (!found) {
+        save_u8(NVS_KEY_PROFILE, (uint8_t)s_profile, "device type");
     }
     s_profile_saved = s_profile;
     ESP_LOGI(TAG, "Device type: %s", device_profile_name(s_profile));
@@ -166,7 +230,6 @@ device_profile_t shelly_profile_saved(void)
     return p;
 }
 
-// One setting in NVS_NAMESPACE; what names it in the log.
 static bool save_u8(const char *key, uint8_t value, const char *what)
 {
     nvs_handle_t h;
@@ -201,7 +264,9 @@ static bool save_switch_mode(int ch, ui_switch_mode_t mode)
 // puts the kept mode back. A failure here leaves the mode as it was.
 static void switch_mode_follow_profile(device_profile_t from, device_profile_t to)
 {
-    if (from == to || shelly_ui_switch_role() != UI_SWITCH_TOGGLE) {
+    // Only an Opener that keeps the wall switch modes (no door sensor on SW)
+    // has a mode of its own; every other type uses the saved modes as they are.
+    if (from == to || OPENER_CONTACT || (from != DEVICE_PROFILE_OPENER && to != DEVICE_PROFILE_OPENER)) {
         return;
     }
     ui_switch_mode_t mode;
@@ -301,9 +366,17 @@ bool shelly_wifi_password_stage(const char *password)
     return true;
 }
 
-bool shelly_profile_stage(device_profile_t profile)
+bool shelly_profile_needs_repair(device_profile_t profile)
 {
-    if (!shelly_profile_available() || (unsigned)profile >= DEVICE_PROFILE_COUNT) {
+    return device_profile_needs_repair(shelly_profile_get(), profile, OPENER_CONTACT);
+}
+
+bool shelly_profile_stage(device_profile_t profile, bool repair_confirmed)
+{
+    if (!shelly_profile_available() || !device_profile_offered(OFFERED_PROFILES, profile)) {
+        return false;
+    }
+    if (shelly_profile_needs_repair(profile) && !repair_confirmed) {
         return false;
     }
     shelly_change_t change = {};
@@ -311,6 +384,31 @@ bool shelly_profile_stage(device_profile_t profile)
     change.profile = profile;
     shelly_change_stage(&change);
     return true;
+}
+
+device_comp_t shelly_comp_now(void)
+{
+    return device_profile_comp(shelly_profile_get(), OPENER_CONTACT);
+}
+
+bool shelly_comp_marker_get(device_comp_t *out)
+{
+    bool found = false;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
+        uint8_t v;
+        if (nvs_get_u8(h, NVS_KEY_COMP, &v) == ESP_OK) {
+            *out = (device_comp_t)v;
+            found = true;
+        }
+        nvs_close(h);
+    }
+    return found;
+}
+
+bool shelly_comp_marker_set(device_comp_t comp)
+{
+    return save_u8(NVS_KEY_COMP, (uint8_t)comp, "composition marker");
 }
 
 void shelly_change_cancel(void)

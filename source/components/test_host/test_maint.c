@@ -335,15 +335,62 @@ static void test_device_profile(void)
     device_profile_t p = DEVICE_PROFILE_COUNT;
     CHECK(device_profile_parse("outlet", &p) && p == DEVICE_PROFILE_OUTLET);
     CHECK(device_profile_parse("opener", &p) && p == DEVICE_PROFILE_OPENER);
-    CHECK(!device_profile_parse("light", &p));
+    CHECK(device_profile_parse("light", &p) && p == DEVICE_PROFILE_LIGHT);
+    CHECK(device_profile_parse("light-switch", &p) && p == DEVICE_PROFILE_LIGHT_SWITCH);
     CHECK(!device_profile_parse("Opener", &p));
+    CHECK(!device_profile_parse("light_switch", &p));
     CHECK(!device_profile_parse("", &p));
     CHECK(!device_profile_parse(NULL, &p));
     CHECK(strcmp(device_profile_name(DEVICE_PROFILE_OUTLET), "outlet") == 0);
     CHECK(strcmp(device_profile_name(DEVICE_PROFILE_OPENER), "opener") == 0);
+    CHECK(strcmp(device_profile_name(DEVICE_PROFILE_LIGHT), "light") == 0);
+    CHECK(strcmp(device_profile_name(DEVICE_PROFILE_LIGHT_SWITCH), "light-switch") == 0);
     CHECK(strcmp(device_profile_name(DEVICE_PROFILE_COUNT), "unknown") == 0);
     // The saved value is a u8: anything past the last type is not one.
     CHECK(strcmp(device_profile_name((device_profile_t)200), "unknown") == 0);
+    // Values stored in NVS by earlier builds keep their meaning.
+    CHECK(DEVICE_PROFILE_OUTLET == 0 && DEVICE_PROFILE_OPENER == 1);
+
+    // Offered sets.
+    uint32_t mini = DEVICE_PROFILE_BIT(DEVICE_PROFILE_OUTLET) | DEVICE_PROFILE_BIT(DEVICE_PROFILE_OPENER) |
+                    DEVICE_PROFILE_BIT(DEVICE_PROFILE_LIGHT) | DEVICE_PROFILE_BIT(DEVICE_PROFILE_LIGHT_SWITCH);
+    uint32_t pm = DEVICE_PROFILE_BIT(DEVICE_PROFILE_OUTLET) | DEVICE_PROFILE_BIT(DEVICE_PROFILE_LIGHT);
+    CHECK(device_profile_offered(mini, DEVICE_PROFILE_LIGHT_SWITCH));
+    CHECK(!device_profile_offered(pm, DEVICE_PROFILE_OPENER));
+    CHECK(!device_profile_offered(pm, DEVICE_PROFILE_LIGHT_SWITCH));
+    CHECK(!device_profile_offered(0xffffffffu, DEVICE_PROFILE_COUNT));
+
+    // Compositions: the 1 Gen4 Opener has a door sensor, the Mini's doesn't.
+    CHECK(device_profile_comp(DEVICE_PROFILE_OUTLET, true) == DEVICE_COMP_PLUG);
+    CHECK(device_profile_comp(DEVICE_PROFILE_OPENER, true) == DEVICE_COMP_PLUG_CONTACT);
+    CHECK(device_profile_comp(DEVICE_PROFILE_OPENER, false) == DEVICE_COMP_PLUG);
+    CHECK(device_profile_comp(DEVICE_PROFILE_LIGHT, false) == DEVICE_COMP_LIGHT);
+    CHECK(device_profile_comp(DEVICE_PROFILE_LIGHT_SWITCH, false) == DEVICE_COMP_LIGHT_SWITCH);
+    CHECK(device_profile_comp(DEVICE_PROFILE_COUNT, false) == DEVICE_COMP_NONE);
+    CHECK(device_profile_sw_role(DEVICE_PROFILE_OPENER, true) == DEVICE_SW_CONTACT);
+    CHECK(device_profile_sw_role(DEVICE_PROFILE_OPENER, false) == DEVICE_SW_TOGGLE);
+    CHECK(device_profile_sw_role(DEVICE_PROFILE_LIGHT_SWITCH, true) == DEVICE_SW_BINDING);
+    CHECK(device_profile_sw_role(DEVICE_PROFILE_LIGHT, true) == DEVICE_SW_TOGGLE);
+
+    // Re-pairing: only a change of composition.
+    CHECK(!device_profile_needs_repair(DEVICE_PROFILE_OUTLET, DEVICE_PROFILE_OPENER, false));
+    CHECK(device_profile_needs_repair(DEVICE_PROFILE_OUTLET, DEVICE_PROFILE_OPENER, true));
+    CHECK(device_profile_needs_repair(DEVICE_PROFILE_OUTLET, DEVICE_PROFILE_LIGHT, false));
+    CHECK(device_profile_needs_repair(DEVICE_PROFILE_LIGHT, DEVICE_PROFILE_LIGHT_SWITCH, false));
+    CHECK(!device_profile_needs_repair(DEVICE_PROFILE_LIGHT, DEVICE_PROFILE_LIGHT, true));
+
+    // The boot-time rule.
+    // No marker: an upgraded or fresh device; record, paired or not.
+    CHECK(repair_decide(false, DEVICE_COMP_NONE, DEVICE_COMP_PLUG, true, false) == REPAIR_WRITE_MARKER);
+    CHECK(repair_decide(false, DEVICE_COMP_NONE, DEVICE_COMP_PLUG, false, true) == REPAIR_WRITE_MARKER);
+    // Same composition: nothing, even while unconfirmed.
+    CHECK(repair_decide(true, DEVICE_COMP_LIGHT, DEVICE_COMP_LIGHT, true, true) == REPAIR_NOTHING);
+    // Changed and unpaired (never paired, or after the reset): record it.
+    CHECK(repair_decide(true, DEVICE_COMP_PLUG, DEVICE_COMP_LIGHT, false, false) == REPAIR_WRITE_MARKER);
+    CHECK(repair_decide(true, DEVICE_COMP_PLUG, DEVICE_COMP_LIGHT, false, true) == REPAIR_WRITE_MARKER);
+    // Changed and paired: reset, unless the image is still unconfirmed.
+    CHECK(repair_decide(true, DEVICE_COMP_PLUG, DEVICE_COMP_LIGHT, true, false) == REPAIR_RESET);
+    CHECK(repair_decide(true, DEVICE_COMP_PLUG, DEVICE_COMP_LIGHT, true, true) == REPAIR_WAIT);
 }
 
 int main(void)

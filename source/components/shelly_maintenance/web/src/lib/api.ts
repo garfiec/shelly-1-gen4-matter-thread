@@ -8,9 +8,9 @@ export type CodeSource = 'sticker' | 'yours' | 'generated' | 'test';
 // code, or none (a device without a sticker code).
 export type WifiSecurity = 'own' | 'sticker' | 'open';
 
-// What the relay is for, on a board that offers the choice (caps.profiles):
-// an outlet that stays on or off, or a garage door opener's short pulse.
-export type Profile = 'outlet' | 'opener';
+// What the relay is for, on a board that offers a choice (caps.profiles):
+// the device type (device_profile.h).
+export type Profile = 'outlet' | 'opener' | 'light' | 'light-switch';
 
 export interface Pending {
   kind: 'code' | 'switch' | 'cal' | 'wifi' | 'profile';
@@ -30,7 +30,12 @@ export interface State {
   switch: SwitchMode[];
   code: { text: string; source: CodeSource; new: boolean; sticker: string | null };
   // now: this boot's device type; next: the saved one, from the next normal boot.
-  profile: { now: Profile; next: Profile };
+  // types: those this device offers, and whether choosing each means pairing
+  // again (its Matter endpoints differ from this boot's). opener_contact: the
+  // Opener reads a door sensor on SW (Shelly 1 Gen4) instead of the wall switch modes.
+  profile: { now: Profile; next: Profile; types: { v: Profile; repair: boolean }[]; opener_contact: boolean };
+  // Wi-Fi mode started by itself because normal starts kept failing.
+  crashed: boolean;
   pending: Pending | null;
   // now: this boot's network; next: the next time Wi-Fi mode starts.
   wifi: { ssid: string; now: WifiSecurity; next: WifiSecurity };
@@ -101,7 +106,7 @@ export type Setting =
   | { key: 'cal.reset' }
   | { key: 'wifi.password'; value: string }
   | { key: 'wifi.password.default' }
-  | { key: 'profile'; value: Profile }
+  | { key: 'profile'; value: Profile; repair?: boolean }
   | { key: 'cancel' };
 
 // Things that happen at once.
@@ -167,8 +172,10 @@ export const MODEL_NAMES: Record<string, string> = {
 };
 
 export const PROFILE_NAMES: Record<Profile, string> = {
+  light: 'Light',
   outlet: 'Outlet',
   opener: 'Garage door opener',
+  'light-switch': 'Light Switch',
 };
 
 export const MODE_NAMES: Record<SwitchMode, string> = {

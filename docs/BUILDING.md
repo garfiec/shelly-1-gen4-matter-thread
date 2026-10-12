@@ -49,28 +49,33 @@ The Dockerfile pins the toolchain. The `dependencies.lock` in each variant direc
 
 ## Repository structure
 
-The repository organizes firmware by product and variant:
+The repository organizes firmware by device. Each device has one app, in its `app/` directory, and one ESP-IDF project per Matter product line, which sets only that line's Product ID and default device type:
 
 ```
 source/
-├── components/          # Shared drivers used by every variant (relay, inputs, LED, thermal,
-│                        # diagnostics, and the 1PM's meter, metering and protection)
+├── components/          # Shared drivers and logic used by every device (relay, inputs, LED,
+│                        # thermal, diagnostics, device types, the Wi-Fi mode page, and the
+│                        # 1PM's and 2PM's meter, metering and protection)
 ├── shelly-1-gen4/
-│   ├── light/           # Matter On/Off Light, latching relay (released)
-│   ├── opener/          # Matter On/Off Plug-in Unit + Contact Sensor, momentary pulse (released)
-│   ├── outlet/          # Matter On/Off Plug-in Unit, latching relay, SW kept as a wall toggle (released)
-│   └── light-switch/    # Matter On/Off Light Switch, detached relay + SW input bound to other Matter devices (released)
+│   ├── app/             # The app: Light, Outlet, Opener (door sensor on SW), Light Switch
+│   ├── light/           # Product ID 0x8001, default type Light (released as its own build before 3.0.0)
+│   ├── light-switch/    # 0x8002, Light Switch
+│   ├── opener/          # 0x8003, Opener
+│   └── outlet/          # 0x8004, Outlet
 ├── shelly-1-mini-gen4/
-│   ├── outlet/          # Matter On/Off Plug-in Unit, latching relay, or a momentary pulse in opener mode (released)
-│   └── light-switch/    # Matter On/Off Light Switch, detached relay + SW input bound to other Matter devices (released)
+│   ├── app/             # The app: Outlet, Opener (no door sensor), Light, Light Switch
+│   ├── outlet/          # 0x8005, Outlet
+│   └── light-switch/    # 0x8006, Light Switch (released by the original project before 3.0.0)
 ├── shelly-1pm-gen4/
-│   └── outlet/          # Matter On/Off Plug-in Unit + Electrical Sensor, power metering and protection (experimental)
+│   ├── app/             # The app: Outlet, Light, with metering and protection (experimental)
+│   └── outlet/          # 0x8009, Outlet
 └── shelly-2pm-gen4/
-    ├── outlet/          # Two Matter On/Off Plug-in Units with metering per relay (experimental)
-    └── light/           # Two Matter On/Off Lights with metering per relay (experimental)
+    ├── app/             # The app: Outlet, Light, two relays with metering each (experimental)
+    ├── outlet/          # 0x8007, Outlet
+    └── light/           # 0x8008, Light
 ```
 
-Each variant is a self-contained ESP-IDF project that also pulls in the shared components from `source/components/`. A variant's pins and board options live in the "Shelly board" menu of its `main/Kconfig.projbuild`. Build commands run from inside the variant directory.
+Each product line directory is a self-contained ESP-IDF project: its `main/CMakeLists.txt` compiles the device's `app/` sources, and it pulls in the shared components from `source/components/`. Its `sdkconfig.defaults.c6_thread_shelly` differs from the device's other lines only in `CONFIG_DEVICE_PRODUCT_ID` and `CONFIG_SHELLY_DEFAULT_TYPE_*`. The pins and board options live in the "Shelly board" menu of `app/Kconfig.app`, which each line's `main/Kconfig.projbuild` sources. Build commands run from inside a product line directory. Build and package every line of a device from the same commit: they are the same firmware.
 
 The pure logic in the shared components has host tests that need only a C compiler and python3, not the container. It covers:
 - the power meter protocol, energy accounting, and the protection and thermal state machines;
@@ -208,7 +213,7 @@ The page talks to the firmware through a small JSON API in `maintenance.cpp`:
 | Request | What it does |
 |---|---|
 | `GET /api/state` | Everything the page shows, and `caps`: what this build has (relays, switch modes, meter, diagnostics, device type), which decides the tabs |
-| `POST /api/set` | A setting, saved at once behind the Wi-Fi mode password; the password, and every setting on an open network, waits for 3 presses of the button (B-26): `{"key":"switch.mode","ch":2,"value":"follow"}`, `code`, `code.random`, `wifi.password`, `wifi.password.default`, `cal`, `cal.reset`, `profile` (`outlet` or `opener`, on a build with `CONFIG_SHELLY_HAS_OPENER_MODE`), or `cancel` |
+| `POST /api/set` | A setting, saved at once behind the Wi-Fi mode password; the password, and every setting on an open network, waits for 3 presses of the button (B-26): `{"key":"switch.mode","ch":2,"value":"follow"}`, `code`, `code.random`, `wifi.password`, `wifi.password.default`, `cal`, `cal.reset`, `profile` (`light`, `outlet`, `opener` or `light-switch`, as the build offers; `"repair":true` confirms a type that needs pairing again), or `cancel` |
 | `POST /api/action` | Something that happens at once: `toggle` a relay, `diag.clear`, `exit` |
 | `GET /api/meter`, `GET /api/hw` | Live meter readings, and the hardware data, polled only while their tab is open |
 | `POST /update` | The firmware upload: the raw `.ota` file as the body |

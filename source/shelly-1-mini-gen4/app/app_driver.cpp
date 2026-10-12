@@ -17,6 +17,9 @@
 //
 
 // app_driver.cpp
+//
+// The relay driver for every device type: latching for Outlet, Light and
+// Light Switch, the shared momentary pulse (shelly_pulse) for the Opener.
 
 #include <esp_log.h>
 
@@ -26,11 +29,20 @@
 
 #include <relay.h>
 #include <shelly_app.h>
+#include <shelly_pulse.h>
+#include <shelly_settings.h>
 
 using namespace chip::app::Clusters;
 using namespace esp_matter;
 
 extern uint16_t relay_endpoint_id;
+
+// The type is fixed for the boot: read it once, not on every OnOff write.
+static bool is_opener(void)
+{
+    static const bool opener = shelly_profile_get() == DEVICE_PROFILE_OPENER;
+    return opener;
+}
 
 esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_t endpoint_id, uint32_t cluster_id,
                                       uint32_t attribute_id, esp_matter_attr_val_t *val)
@@ -39,7 +51,9 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
     if (endpoint_id == relay_endpoint_id) {
         if (cluster_id == OnOff::Id) {
             if (attribute_id == OnOff::Attributes::OnOff::Id) {
-                err = relay_set(val->val.b);
+                // Opener mode: an On is a momentary pulse that turns OnOff
+                // back off by itself.
+                err = is_opener() ? shelly_pulse_write(endpoint_id, val->val.b) : relay_set(val->val.b);
             }
         }
     }
@@ -48,6 +62,11 @@ esp_err_t app_driver_attribute_update(app_driver_handle_t driver_handle, uint16_
 
 esp_err_t app_driver_relay_set_defaults(uint16_t endpoint_id)
 {
+    // Opener mode: the trigger is never closed at boot.
+    if (is_opener()) {
+        return shelly_pulse_set_defaults(endpoint_id);
+    }
+
     esp_err_t err = ESP_OK;
     esp_matter_attr_val_t val = esp_matter_invalid(NULL);
 

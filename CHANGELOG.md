@@ -2,7 +2,23 @@
 
 All notable changes to this firmware are recorded here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-Each firmware variant versions independently, and releases are grouped by device and variant below. Switching a device between variants always requires full reset and re-commission, because each variant is a different Matter device type.
+From 3.0.0, every device and product line shares one version number, so you can tell at a glance which firmware is newer. Earlier releases versioned each variant on its own and are grouped by device and variant below; the 3.0.0 firmware includes every change listed as Unreleased there.
+
+## All devices
+
+### [3.0.0] - Unreleased
+
+One firmware per device, with the device type chosen on the Wi-Fi mode page. **Not yet verified on hardware.**
+
+#### Added
+- Device types, chosen on the Wi-Fi mode page's Switch tab: Light, Outlet, Garage door opener and Light Switch on the Shelly 1 Gen4 and Shelly 1 Mini Gen4 (the Mini gains Light and Light Switch), Outlet and Light on the Shelly 1PM Gen4 (Light is new) and Shelly 2PM Gen4. Each device is packaged once per Matter product line (Product ID), and each package starts as its line's type, so a device updated from an earlier build keeps its type, its endpoints and its pairing. See [Device type](docs/BUTTON-AND-LED.md#device-type).
+- Changing to a type with other Matter endpoints needs the device paired again. The page warns and asks you to confirm; at the next normal boot the device clears its pairings and Thread network and restarts ready to pair, keeping the setup code and Wi-Fi mode password you chose, the switch modes and the meter calibration (P-05). On the Mini, Outlet and Garage door opener keep the pairing.
+- Crash guard: after 3 normal boots in a row that end in a crash or watchdog restart, the device starts in Wi-Fi maintenance mode instead, and the page says why, so a bad type or firmware can still be fixed over Wi-Fi (P-06).
+
+#### Changed
+- One version number, 3.0.0, for every device and product line. The Matter product name no longer names a variant (e.g. "Shelly 1 Gen4 MoT"), since the type can change.
+- The Shelly 1 Mini Gen4 Light Switch, released by the original project, now runs this firmware: stock Shelly button gestures (a tap acts on release, factory reset at 10 s instead of about 1.5 s), Wi-Fi maintenance mode, the sticker's setup code for new pairings (existing pairings stay), and the other features listed under the Mini below. Its bootloader is not updated by a Matter update, so a device updated over Matter gets no automatic rollback until it is reinstalled from the Shelly web UI.
+- The Shelly 1 Gen4 Opener's door sensor and the Light Switch's binding code moved into the shared components, used by both the Shelly 1 Gen4 and the Mini.
 
 ## Shelly 1 Gen4, all variants
 
@@ -246,7 +262,7 @@ Meter calibration from the Wi-Fi mode page. **Experimental: built and unit-teste
 
 ### [1.0.1] - Unreleased
 
-First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: built and unit-tested, not yet verified on hardware.** See the [1PM checklist](docs/FLASHING.md#shelly-1pm-gen4-checklist) before flashing.
+First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: ran and paired on one unit; metering and protection not yet verified on hardware.** See the [1PM checklist](docs/FLASHING.md#shelly-1pm-gen4-checklist) before flashing.
 
 #### Added
 - Wall switch modes, set on the Wi-Fi mode page: Toggle (every change toggles, the default and the previous behaviour), Push button (a button that springs back toggles once per press; before, it switched on and straight back off), Follow (the relay matches the switch position) and Disabled. The Opener and Light Switch keep their own use of SW. See [Wall switch modes](docs/BUTTON-AND-LED.md#wall-switch-modes).
@@ -263,7 +279,7 @@ First release for the Shelly 1PM Gen4 (UL, 15 A / 120 V). **Experimental: built 
 - Board NTC temperature, with a trip at 90°C and the die sensor as a fallback.
 - Welded-relay and meter-lost alerts.
 - All the robustness features of Shelly 1 Gen4 2.2.0.
-- Distinct Matter Product ID (`0x8009`). It was `0x8006` before release, which the Shelly 1 Mini Gen4 Light Switch now uses.
+- Distinct Matter Product ID (`0x8009`). It was `0x8006` before release, which the Shelly 1 Mini Gen4 Light Switch already uses.
 
 #### Fixed
 - Pairing from Android now completes. The device didn't answer pings on its Thread address, and Android's Matter pairing gives up at "Checking connectivity to Thread network" without one, even though the device was reachable for Matter itself. It now answers ping on every Thread address. Found on a Shelly 1PM Gen4 behind an Aqara border router; it affected every variant.

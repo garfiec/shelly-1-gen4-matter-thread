@@ -248,9 +248,9 @@ static const struct {
     ui_switch_role_t role;
     uint8_t ch;
 } ROLES[] = {
-    {"Light, Outlet, Mini, 1PM, 2PM SW1", UI_SWITCH_TOGGLE, 0},
+    {"Light, Outlet, Mini Opener, 2PM SW1", UI_SWITCH_TOGGLE, 0},
     {"2PM SW2", UI_SWITCH_TOGGLE, 1},
-    {"Opener", UI_SWITCH_CONTACT, 0},
+    {"1 Gen4 Opener", UI_SWITCH_CONTACT, 0},
     {"Light Switch", UI_SWITCH_BINDING, 0},
 };
 
@@ -345,12 +345,12 @@ typedef struct {
 } switch_row_t;
 
 static const switch_row_t SWITCHES[] = {
-    {"SW-01", "Light, Outlet, Mini, 1PM, 2PM SW1", "Booting", "Ignored"},
-    {"SW-02", "Light, Outlet, Mini, 1PM, 2PM SW1", "Normal", "Toggle"},
-    {"SW-03", "Light, Outlet, Mini, 1PM, 2PM SW1", "Wi-Fi maintenance mode", "Toggle, without Matter"},
-    {"SW-04", "Opener", "Booting", "Ignored"},
-    {"SW-05", "Opener", "Normal", "Its own use"},
-    {"SW-06", "Opener", "Wi-Fi maintenance mode", "Ignored"},
+    {"SW-01", "Light, Outlet, Mini Opener, 2PM SW1", "Booting", "Ignored"},
+    {"SW-02", "Light, Outlet, Mini Opener, 2PM SW1", "Normal", "Toggle"},
+    {"SW-03", "Light, Outlet, Mini Opener, 2PM SW1", "Wi-Fi maintenance mode", "Toggle, without Matter"},
+    {"SW-04", "1 Gen4 Opener", "Booting", "Ignored"},
+    {"SW-05", "1 Gen4 Opener", "Normal", "Its own use"},
+    {"SW-06", "1 Gen4 Opener", "Wi-Fi maintenance mode", "Ignored"},
     {"SW-07", "Light Switch", "Booting", "Ignored"},
     {"SW-08", "Light Switch", "Normal", "Its own use"},
     {"SW-09", "Light Switch", "Wi-Fi maintenance mode", "Ignored"},

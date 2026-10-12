@@ -9,7 +9,7 @@
   const relay = $derived(two ? `relay ${ch}` : 'the relay');
   const slot = $derived(ch === 2 ? 'switch2' : 'switch1');
   // In opener mode (from the next boot, if just saved) a toggle is a pulse.
-  const opener = $derived(app.state!.profile?.next === 'opener');
+  const opener = $derived(app.state!.profile?.next === 'opener' && !app.state!.profile.opener_contact);
   const options = $derived<{ v: SwitchMode; hint: string }[]>(
     opener
       ? [

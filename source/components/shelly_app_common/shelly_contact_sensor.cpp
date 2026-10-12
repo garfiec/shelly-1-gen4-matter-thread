@@ -14,11 +14,14 @@
 // limitations under the License.
 //
 
-// contact_sensor.cpp
+
+
+// shelly_contact_sensor.cpp
+//
+// The Shelly 1 Gen4 Opener's door contact sensor on the SW terminal.
 
 #include "contact_sensor.h"
 
-#include <app_priv.h>
 
 #include <esp_log.h>
 #include <esp_matter.h>
@@ -36,10 +39,20 @@ using namespace esp_matter;
 
 static const char *TAG = "contact_sensor";
 
-// Defined in app_main.cpp. The endpoint whose Boolean State StateValue
-// attribute we update when the door position changes. Zero until the
-// endpoint is created; edges before then are ignored.
-extern uint16_t contact_sensor_endpoint_id;
+// CONTACT_OPEN_IS_HIGH: the SW level that means the door is open.
+#ifndef CONTACT_OPEN_IS_HIGH
+#define CONTACT_OPEN_IS_HIGH 0
+#endif
+
+// The endpoint whose Boolean State StateValue attribute we update when the
+// door position changes. Zero until the endpoint is created; edges before
+// then are ignored.
+static uint16_t contact_sensor_endpoint_id = 0;
+
+void contact_sensor_set_endpoint(uint16_t endpoint_id)
+{
+    contact_sensor_endpoint_id = endpoint_id;
+}
 
 // The SW terminal, used here as the reed/limit switch input, is owned by
 // the shared switch_input module (debounce, level compare, no internal
@@ -47,7 +60,7 @@ extern uint16_t contact_sensor_endpoint_id;
 
 // A change goes through the device UI, which decides what it does in each
 // state (docs/BUTTON-AND-LED.md SW-04..06): once Matter is up, it calls
-// contact_sensor_report() back (the switch_handler in app_main.cpp).
+// contact_sensor_report() back (the switch_handler set in app_main.cpp).
 static void contact_sensor_changed(bool level, void *arg)
 {
     shelly_ui_switch_changed(switch_input_active(level));

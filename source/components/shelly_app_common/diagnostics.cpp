@@ -219,6 +219,9 @@ void shelly_diagnostics_install(void)
 // A gap this long between successful lock checks restarts the healthy
 // period that an OTA image must complete before it is confirmed.
 #define OTA_CONFIRM_MAX_GAP_US  (10LL * 1000 * 1000)
+// A normal boot that runs this long with Matter responsive clears the crash
+// guard (shelly_crash_guard_boot()).
+#define CRASH_GUARD_CLEAR_AFTER_US (10LL * 1000 * 1000)
 #define HEALTH_POLL_MS          1000
 #define HEALTH_TASK_STACK_SIZE  3072
 
@@ -255,6 +258,7 @@ static void health_task(void *arg)
     // Start of the current unbroken run of responsive checks.
     int64_t healthy_since_us = started_us;
     bool confirmed = false;
+    bool crash_guard_cleared = false;
     bool stall_logged = false;
     bool updating = false;
 
@@ -303,6 +307,13 @@ static void health_task(void *arg)
         if (!confirmed && responsive && (now - healthy_since_us) >= OTA_CONFIRM_AFTER_US) {
             confirm_running_image();
             confirmed = true;
+            shelly_ui_image_confirmed();
+        }
+
+        // Matter has run for a while: this boot didn't crash on the way up.
+        if (!crash_guard_cleared && responsive && (now - started_us) >= CRASH_GUARD_CLEAR_AFTER_US) {
+            shelly_crash_guard_clear();
+            crash_guard_cleared = true;
         }
 
         shelly_diag_log_tick();

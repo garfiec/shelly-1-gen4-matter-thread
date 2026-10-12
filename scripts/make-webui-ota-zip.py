@@ -26,7 +26,7 @@ Point it at a variant directory (defaults to the current one):
 
 It reads the variant and version from build/project_description.json, pulls the
 bootloader, partition table, otadata and app from build/, adds an empty filesystem
-image, and writes automatous-io-<hardware>-<variant>-v<version>-ota.zip, where
+image, and writes <hardware>-<variant>-v<version>-ota.zip, where
 <hardware> is the source/<hardware> directory the variant lives in.
 
 The Web UI OTA refuses a package whose name/compatible don't match the unit's Shelly
@@ -112,7 +112,7 @@ def main():
     if subprocess.run([sys.executable, check, variant_dir, "--elf-if-available"]).returncode != 0:
         sys.exit("the build fails the reversibility check; not packaging it")
 
-    stem = f"automatous-io-{hardware}-{variant}-v{version}-ota"
+    stem = f"{hardware}-{variant}-v{version}-ota"
     zip_out = os.path.join(variant_dir, f"{stem}.zip")
 
     with tempfile.TemporaryDirectory() as tmp:

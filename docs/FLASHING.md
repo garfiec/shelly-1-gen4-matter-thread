@@ -101,7 +101,7 @@ The fastest way to install this firmware is the Shelly web UI, over your network
 >
 > This is based on how Shelly's updater and the ESP-IDF bootloader work, and on reports from related projects; nobody has yet uploaded this firmware from slot 0 to see which of the two happens.
 
-1. Download the web UI package for your device and variant, `automatous-io-{hardware}-{variant}-vX.Y.Z-ota.zip`, from the [latest release](../../../releases/latest). This is the `.zip`, not the `.bin`.
+1. Download the web UI package for your device and variant, `{hardware}-{variant}-vYYYY.MM.PATCH-ota.zip`, from the [latest release](../../../releases/latest). This is the `.zip`, not the `.bin`.
 2. Open the Shelly's web UI in a browser at its IP address on your network.
 3. In the device's firmware settings, choose to install firmware from a file and select the `.zip` you downloaded.
 4. Confirm the update. The device flashes the new firmware and reboots into BLE commissioning mode, and the LED will rapidly blink. If it does not reboot automatically, remove and reapply power. A full power cycle after the install is good practice in any case: the stock firmware can leave the relay and LED pins latched in their last state until power is removed. This firmware releases them at boot, and a power cycle guarantees it.
@@ -296,7 +296,7 @@ esptool --chip esp32c6 --port <PORT> --baud 115200 erase-flash
 
 ```bash
 esptool --chip esp32c6 --port <PORT> --baud 115200 \
-  write-flash 0x0 automatous-io-shelly-1-gen4-light-<VERSION>.bin
+  write-flash 0x0 shelly-1-gen4-light-v<VERSION>-uart.bin
 ```
 
 **Restore the original firmware:**

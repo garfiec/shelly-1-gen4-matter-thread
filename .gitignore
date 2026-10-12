@@ -39,6 +39,10 @@ shelly-capture-*
 automatous-io-shelly-*-gen4-*.bin
 automatous-io-shelly-*-gen4-*.zip
 automatous-io-shelly-*-gen4-*.ota
+shelly-*-gen4-*-v*.ota
+shelly-*-gen4-*-v*-ota.zip
+shelly-*-gen4-*-v*-uart.bin
+SHA256SUMS.txt
 
 # IDF component manager
 idf_component_manager.yml
@@ -52,3 +56,6 @@ shelly-capture-*
 # Diagnostics builds (docs/BUILDING.md)
 build_diag/
 sdkconfig.diag
+
+# Release packages made by scripts/ci-package.sh
+dist/

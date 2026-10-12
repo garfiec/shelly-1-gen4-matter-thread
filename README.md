@@ -1,5 +1,7 @@
 # Shelly Gen4 — Matter over Thread
 
+[![Latest release](https://img.shields.io/github/v/release/garfiec/shelly-1-gen4-matter-thread?include_prereleases&sort=date)](../../releases) [![CI](https://github.com/garfiec/shelly-1-gen4-matter-thread/actions/workflows/ci.yml/badge.svg?branch=main)](../../actions/workflows/ci.yml)
+
 Open source firmware that turns Shelly Gen4 relays into **Matter over Thread** devices. They work directly with Apple Home, Google Home, Alexa and Home Assistant, with no Shelly app, no cloud and no Wi-Fi in everyday use.
 
 You install it from the Shelly's own web page, with no wires or soldering. After that the device has a built-in maintenance page you can open from your phone at any time. On it you can update the firmware, see the pairing code, set up the wall switch, calibrate the meter and check diagnostics.
@@ -140,7 +142,7 @@ The full step-by-step guide, with answers to the common gotchas, is in **[Gettin
 - [Flashing Guide](docs/FLASHING.md): the web install in detail, USB-UART flashing and backups
 - [Reversibility](docs/REVERSIBILITY.md): warranty, factory keys, and going back to stock
 - [Button, Switch and LED specification](docs/BUTTON-AND-LED.md): the exact behavior in every state, checked by the tests
-- [Building from Source](docs/BUILDING.md), [GPIO Map](docs/GPIO.md), [Power Consumption](docs/POWER.md), [Certification](docs/CERTIFICATION.md)
+- [Building from Source](docs/BUILDING.md), [Releasing](docs/RELEASING.md), [GPIO Map](docs/GPIO.md), [Power Consumption](docs/POWER.md), [Certification](docs/CERTIFICATION.md)
 - [Stock Firmware Features](docs/STOCK-FEATURES.md), [Roadmap](docs/ROADMAP.md), [Changelog](CHANGELOG.md)
 - [Contributing](docs/CONTRIBUTING.md), [Security policy](SECURITY.md)
 

@@ -159,6 +159,13 @@ static void test_image(void)
     CHECK(mi_version_cmp("1.0", "1.0.0") == 0);
     CHECK(mi_version_cmp("1.2.3-dirty", "1.2.3") == 0);
     CHECK(mi_version_cmp("", "0.0.0") == 0);
+    // Calendar versions (YYYY.MM.PATCH) come after every SemVer release.
+    CHECK(mi_version_cmp("2026.10.0", "3.0.0") > 0);
+    CHECK(mi_version_cmp("3.0.0", "2026.10.0") < 0);
+    CHECK(mi_version_cmp("2026.10.1", "2026.10.0") > 0);
+    CHECK(mi_version_cmp("2027.01.0", "2026.12.9") > 0);
+    CHECK(mi_version_cmp("2026.09.0", "2026.10.0") < 0);
+    CHECK(mi_version_cmp("2026.10.10", "2026.10.9") > 0);
 }
 
 // ---------------------------------------------------------------------------

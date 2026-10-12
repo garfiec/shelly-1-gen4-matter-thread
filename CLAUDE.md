@@ -43,3 +43,4 @@ Other docs (`COMMISSIONING.md`, `FLASHING.md`, `UPDATING.md`, `PROTECTION.md`, `
 - **Build:** in the builder container, `idf.py -DSDKCONFIG_DEFAULTS=sdkconfig.defaults.c6_thread_shelly build` (see `docs/BUILDING.md`).
 - **Host tests:** `source/components/test_host/run.sh` needs only a host C compiler and python3.
 - **CI:** every push to `main` and every pull request runs the host tests, `scripts/check-web.sh` and a build of every product line in which a warning in this repository's code is an error (`SHELLY_WERROR=1 scripts/ci-build.sh <product line>`). Keep new code free of warnings.
+- **Versions:** calendar-based, `YYYY.MM.PATCH`, the same for every device and product line. Only the Release workflow changes them (`scripts/bump-version.py`); don't edit `VERSION`, `PROJECT_VER` or the software version in `CHIPProjectConfig.h` by hand. Add changes to `CHANGELOG.md` under `### [Unreleased]` in **All devices**. See `docs/RELEASING.md`.

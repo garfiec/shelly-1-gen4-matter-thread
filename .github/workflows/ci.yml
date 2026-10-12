@@ -1,6 +1,6 @@
-# Checks every push to main and every pull request: the host tests, the Wi-Fi
-# mode page, and a build of every product line with warnings in this
-# repository's code treated as errors. See docs/BUILDING.md#continuous-integration.
+# Checks every push to main and every pull request: the host tests, the
+# version, the Wi-Fi mode page, and a build of every product line with
+# warnings in this repository's code treated as errors. See docs/BUILDING.md#continuous-integration.
 name: CI
 
 on:
@@ -27,6 +27,8 @@ jobs:
       # mmap randomisation.
       - run: sudo sysctl -w vm.mmap_rnd_bits=28
       - run: source/components/test_host/run.sh
+      - name: One version everywhere
+        run: scripts/bump-version.py check
 
   web:
     name: Wi-Fi mode page

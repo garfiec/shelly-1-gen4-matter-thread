@@ -59,14 +59,14 @@ source/
 │                        # 1PM's and 2PM's meter, metering and protection)
 ├── shelly-1-gen4/
 │   ├── app/             # The app: Light, Outlet, Opener (door sensor on SW), Light Switch
-│   ├── light/           # Product ID 0x8001, default type Light (released as its own build before 3.0.0)
+│   ├── light/           # Product ID 0x8001, default type Light (released as its own build before 2026.10.0)
 │   ├── light-switch/    # 0x8002, Light Switch
 │   ├── opener/          # 0x8003, Opener
 │   └── outlet/          # 0x8004, Outlet
 ├── shelly-1-mini-gen4/
 │   ├── app/             # The app: Outlet, Opener (no door sensor), Light, Light Switch
 │   ├── outlet/          # 0x8005, Outlet
-│   └── light-switch/    # 0x8006, Light Switch (released by the original project before 3.0.0)
+│   └── light-switch/    # 0x8006, Light Switch (released by the original project before 2026.10.0)
 ├── shelly-1pm-gen4/
 │   ├── app/             # The app: Outlet, Light, with metering and protection
 │   └── outlet/          # 0x8009, Outlet
@@ -226,13 +226,13 @@ The page talks to the firmware through a small JSON API in `maintenance.cpp`:
 
 ## Build the release artifacts
 
-Each install and update path needs a different packaged artifact, and all three come from the same build:
+Releases are built and packaged by CI (see [Releasing](RELEASING.md)); this section is for packaging your own build. Each install and update path needs a different packaged artifact, and all three come from the same build:
 
 | Artifact | Path it serves | Built with |
 |---|---|---|
-| `automatous-io-{hardware}-{variant}-vX.Y.Z.bin` | UART / ESPConnect full install | `idf.py merge-bin` |
-| `automatous-io-{hardware}-{variant}-vX.Y.Z-ota.zip` | Shelly web UI install | `scripts/make-webui-ota-zip.py` |
-| `automatous-io-{hardware}-{variant}-vX.Y.Z.ota` | Matter OTA update | `scripts/make-matter-ota.py` |
+| `{hardware}-{variant}-vYYYY.MM.PATCH-uart.bin` | UART / ESPConnect full install | `idf.py merge-bin` |
+| `{hardware}-{variant}-vYYYY.MM.PATCH-ota.zip` | Shelly web UI install | `scripts/make-webui-ota-zip.py` |
+| `{hardware}-{variant}-vYYYY.MM.PATCH.ota` | Matter OTA update | `scripts/make-matter-ota.py` |
 
 The examples below build the `light` variant; for another, point the script at its directory or substitute its name.
 
@@ -244,7 +244,7 @@ A single `.bin` for flashing at offset `0x0`, matching the released binaries. Fr
 idf.py merge-bin
 ```
 
-It reads the flash mode, flash size, and every partition offset from the build's flash arguments and writes `build/merged-binary.bin` in the `/build` directory. Rename it to `automatous-io-{hardware}-{variant}-v{version}.bin`.
+It reads the flash mode, flash size, and every partition offset from the build's flash arguments and writes `build/merged-binary.bin` in the `/build` directory. Rename it to `{hardware}-{variant}-v{version}-uart.bin`. It ends with the app, so writing it at `0x0` doesn't reach the `shelly` partition near the end of the flash; an `erase-flash` before it does (see [Reversibility](REVERSIBILITY.md)).
 
 ### Web UI package
 
@@ -254,7 +254,7 @@ The `.zip` that installs through the Shelly web UI. Run it from the repository r
 python3 scripts/make-webui-ota-zip.py source/shelly-1-gen4/light
 ```
 
-It reads the variant and version from the build, bundles the bootloader, partition table, otadata, and application with an empty filesystem image, and writes `automatous-io-{hardware}-{variant}-vX.Y.Z-ota.zip` next to the build.
+It reads the variant and version from the build, bundles the bootloader, partition table, otadata, and application with an empty filesystem image, and writes `{hardware}-{variant}-vYYYY.MM.PATCH-ota.zip` next to the build.
 
 ### Matter OTA image
 
@@ -264,7 +264,7 @@ The `.ota` served to commissioned devices through Home Assistant:
 python3 scripts/make-matter-ota.py source/shelly-1-gen4/light
 ```
 
-It calls `ota_image_tool.py` from the connectedhomeip checkout, found via `ESP_MATTER_PATH`. It has to run inside the container. It reads the vendor and product ID from the build's `sdkconfig` and the software version from `CHIPProjectConfig.h`; the image always matches the firmware it came from and can only target the device and variant it was built for. The output is `automatous-io-{hardware}-{variant}-vX.Y.Z.ota`. See [Updating](UPDATING.md) for how to serve it.
+It calls `ota_image_tool.py` from the connectedhomeip checkout, found via `ESP_MATTER_PATH`. It has to run inside the container. It reads the vendor and product ID from the build's `sdkconfig` and the software version from `CHIPProjectConfig.h`; the image always matches the firmware it came from and can only target the device and variant it was built for. The output is `{hardware}-{variant}-vYYYY.MM.PATCH.ota`. See [Updating](UPDATING.md) for how to serve it.
 
 ---
 
@@ -272,7 +272,7 @@ It calls `ota_image_tool.py` from the connectedhomeip checkout, found via `ESP_M
 
 Every push to `main` and every pull request runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
 
-- **Host tests:** `source/components/test_host/run.sh`.
+- **Host tests:** `source/components/test_host/run.sh`, and `scripts/bump-version.py check` (every product line carries the version in `VERSION`).
 - **Wi-Fi mode page:** `scripts/check-web.sh`, so a change under `web/` without a rebuilt `page.html.gz` fails.
 - **Firmware:** every product line, built in the builder image with `scripts/ci-build.sh`. A warning in this repository's code (`source/components/`, each device's `app/` and each product line's `main/`) fails the build; warnings in ESP-IDF, esp-matter and managed components don't. Each build's images are kept as a workflow artifact for 7 days.
 

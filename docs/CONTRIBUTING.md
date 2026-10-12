@@ -54,17 +54,19 @@ If you built the firmware yourself rather than using a release, say so, and buil
 
 ## Firmware filename convention
 
-Release binaries follow this pattern.
+Release files follow this pattern.
 
 ```
-automatous-io-{hardware}-{variant}-{version}.bin
+{hardware}-{variant}-{version}.ota        Matter OTA, and the Wi-Fi mode page
+{hardware}-{variant}-{version}-ota.zip    Shelly web UI install
+{hardware}-{variant}-{version}-uart.bin   UART install at 0x0
 ```
 
-- `{hardware}` is the device, matching its directory under `source/`: `shelly-1-gen4` or `shelly-1-mini-gen4`.
+- `{hardware}` is the device, matching its directory under `source/`: `shelly-1-gen4`, `shelly-1-mini-gen4`, `shelly-1pm-gen4` or `shelly-2pm-gen4`.
 - `{variant}` is the firmware build: `light`, `opener`, `outlet`, or `light-switch`. See [Building from Source](BUILDING.md#repository-structure) for what each variant does.
-- `{version}` is the release version, in the form `vX.Y.Z`.
+- `{version}` is the release version, in the form `vYYYY.MM.PATCH` (see [Releasing](RELEASING.md)).
 
-A complete example is `automatous-io-shelly-1-gen4-light-vX.Y.Z.bin`.
+A complete example is `shelly-1-gen4-light-v2026.10.0.ota`. Releases before 2026.10.0 were named `automatous-io-{hardware}-{variant}-vX.Y.Z`.
 
 ---
 

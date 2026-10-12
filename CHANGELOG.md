@@ -1,12 +1,14 @@
 # Changelog
 
-All notable changes to this firmware are recorded here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this firmware are recorded here. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions are calendar-based, `YYYY.MM.PATCH` (see [Releasing](docs/RELEASING.md)); releases up to 3.0.0 used [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-From 3.0.0, every device and product line shares one version number, so you can tell at a glance which firmware is newer. Earlier releases versioned each variant on its own and are grouped by device and variant below; the 3.0.0 firmware includes every change listed as Unreleased there.
+Every device and product line now shares one version number, so you can tell at a glance which firmware is newer. Earlier releases versioned each variant on its own and are grouped by device and variant below; the first shared release includes every change listed as Unreleased there.
+
+New changes go under `### [Unreleased]` in **All devices**; the release workflow renames that heading to the version it releases.
 
 ## All devices
 
-### [3.0.0] - Unreleased
+### [Unreleased]
 
 One firmware per device, with the device type chosen on the Wi-Fi mode page. **Not yet verified on hardware.**
 
@@ -16,7 +18,7 @@ One firmware per device, with the device type chosen on the Wi-Fi mode page. **N
 - Crash guard: after 3 normal boots in a row that end in a crash or watchdog restart, the device starts in Wi-Fi maintenance mode instead, and the page says why, so a bad type or firmware can still be fixed over Wi-Fi (P-06).
 
 #### Changed
-- One version number, 3.0.0, for every device and product line. The Matter product name no longer names a variant (e.g. "Shelly 1 Gen4 MoT"), since the type can change.
+- One version number for every device and product line, calendar-based from now on: `YYYY.MM.PATCH`, starting at 2026.10.0. Matter sees it as YYYYMMPP (2026.10.0 is 20261000), above every earlier release, so devices update to it. Release files drop the `automatous-io-` prefix (`shelly-1-gen4-light-v2026.10.0.ota`), and each release adds a `-uart.bin` and `SHA256SUMS.txt`. The Matter product name no longer names a variant (e.g. "Shelly 1 Gen4 MoT"), since the type can change.
 - The Shelly 1 Mini Gen4 Light Switch, released by the original project, now runs this firmware: stock Shelly button gestures (a tap acts on release, factory reset at 10 s instead of about 1.5 s), Wi-Fi maintenance mode, the sticker's setup code for new pairings (existing pairings stay), and the other features listed under the Mini below. Its bootloader is not updated by a Matter update, so a device updated over Matter gets no automatic rollback until it is reinstalled from the Shelly web UI.
 - The Shelly 1 Gen4 Opener's door sensor and the Light Switch's binding code moved into the shared components, used by both the Shelly 1 Gen4 and the Mini.
 

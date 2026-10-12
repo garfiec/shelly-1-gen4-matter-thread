@@ -53,7 +53,7 @@ Enabling it also points the server at its OTA folder: `core_matter_server/update
 
 ### 2. Get the OTA image
 
-Download the `.ota` files for your device from the [latest release](../../../releases/latest), or [build them yourself](#building-the-ota-image). Each device's firmware is packaged once per product line (Light, Outlet and so on), and each image is named `automatous-io-{hardware}-{line}-vX.Y.Z.ota`. A device only accepts the image of the line it was installed from (Matter matches them by product ID), whatever device type you've chosen since, so the simplest is to put all of your device's `.ota` files in the folder: each device picks its own. The version must be higher than what the device is running, or the server has nothing newer to offer.
+Download the `.ota` files for your device from the [latest release](../../../releases/latest), or [build them yourself](#building-the-ota-image). Each device's firmware is packaged once per product line (Light, Outlet and so on), and each image is named `{hardware}-{line}-vYYYY.MM.PATCH.ota`. A device only accepts the image of the line it was installed from (Matter matches them by product ID), whatever device type you've chosen since, so the simplest is to put all of your device's `.ota` files in the folder: each device picks its own. The version must be higher than what the device is running, or the server has nothing newer to offer.
 
 ### 3. Place the image
 
@@ -106,7 +106,7 @@ The mode is a restart rather than a switch because Espressif does not support a 
 
 ### 1. Get the OTA image
 
-Use the same `.ota` file as for [Matter OTA](#2-get-the-ota-image): `automatous-io-{hardware}-{variant}-vX.Y.Z.ota`. The page refuses:
+Use the same `.ota` file as for [Matter OTA](#2-get-the-ota-image): `{hardware}-{variant}-vYYYY.MM.PATCH.ota`. The page refuses:
 - a `.bin`: use the `.ota`;
 - firmware for a different Shelly model: the image carries its hardware code (`S1G4`, `Mini1G4`, `S1PMG4` or `S2PMG4`), and it must match;
 - firmware built before this feature: it has no hardware code, so install it over UART. Matter OTA only offers a version higher than the one running, and every build without a hardware code is older than one with it.

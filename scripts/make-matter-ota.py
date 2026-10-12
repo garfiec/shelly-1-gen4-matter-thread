@@ -35,7 +35,7 @@ Every field that the device matches against is read from the build:
     does not carry.
 
 It wraps build/<variant>.bin with the upstream Matter ota_image_tool.py and writes
-automatous-io-<hardware>-<variant>-v<version>.ota next to the build, where <hardware>
+<hardware>-<variant>-v<version>.ota next to the build, where <hardware>
 is the source/<hardware> directory the variant lives in.
 
 Run it in the same esp-matter environment you build in. ota_image_tool.py is
@@ -123,7 +123,7 @@ def main():
         sys.exit(f"{app_bin} carries hardware code {hw_code!r} (magic 0x{magic:08X}), expected "
                  f"{m.group(1)!r} — rebuild before packaging")
 
-    out = os.path.join(variant_dir, f"automatous-io-{hardware}-{variant}-v{version_str}.ota")
+    out = os.path.join(variant_dir, f"{hardware}-{variant}-v{version_str}.ota")
 
     cmd = [sys.executable, find_ota_image_tool(), "create",
            "-v", f"0x{vid:04X}", "-p", f"0x{pid:04X}",

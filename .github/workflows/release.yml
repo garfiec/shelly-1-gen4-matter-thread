@@ -1,0 +1,168 @@
+# Cuts a release: Actions > Release > Run workflow. Versions are calendar-based
+# (YYYY.MM.PATCH, from today's UTC date; scripts/bump-version.py), one for every
+# device and product line. The workflow builds and packages every product line
+# at the new version, and only then commits the version and CHANGELOG, tags
+# the commit and publishes the GitHub release, so a failed build leaves
+# nothing behind. See docs/RELEASING.md.
+#
+# Pushing a vYYYY.MM.PATCH tag by hand releases that commit instead; its
+# VERSION and sources must already say that version.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Mark it as a pre-release (not yet tried on hardware)
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [ "$(cat VERSION)" != "$version" ]; then
+              echo "::error::$GITHUB_REF_NAME is tagged on a commit whose VERSION is $(cat VERSION)"
+              exit 1
+            fi
+            scripts/bump-version.py check
+            scripts/changelog-release.py notes "$version" /dev/null
+            scripts/bump-version.py set "$version" >/dev/null
+            git diff --exit-code --quiet
+          else
+            if [ "$GITHUB_REF_NAME" != main ]; then
+              echo "::error::Run the release from main, not $GITHUB_REF_NAME"
+              exit 1
+            fi
+            version="$(scripts/bump-version.py next)"
+            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+              echo "::error::v$version already exists"
+              exit 1
+            fi
+            scripts/changelog-release.py check
+          fi
+          echo "Releasing $version" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Find the builder image
+        id: image
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/shelly-gen4-builder:$(scripts/builder-image-tag.sh)"
+          if ! docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            echo "::error::$image does not exist yet: run Actions > Builder image first"
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - run: source/components/test_host/run.sh
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/build-firmware.yml
+    with:
+      image: ${{ needs.prepare.outputs.image }}
+      version: ${{ needs.prepare.outputs.version }}
+      package: true
+
+  release:
+    needs: [prepare, host-tests, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+
+      - name: Check the packages
+        working-directory: dist
+        run: |
+          ls -l
+          count="$(find . -type f | wc -l)"
+          if [ "$count" -ne 27 ]; then
+            echo "::error::expected 27 files (9 product lines x .ota, -ota.zip, -uart.bin), found $count"
+            exit 1
+          fi
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Commit the version and tag it
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          scripts/bump-version.py set "$VERSION"
+          scripts/changelog-release.py cut "$VERSION" "$RUNNER_TEMP/changelog.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION CHANGELOG.md source/*/*/CMakeLists.txt source/*/*/main/CHIPProjectConfig.h
+          git commit -q -m "chore(release): $TAG"
+          git tag -a "$TAG" -m "Release $TAG"
+          # The commit and the tag land together or not at all. If main moved
+          # since the build started, this fails and nothing is released.
+          git push --atomic origin "HEAD:main" "refs/tags/$TAG"
+
+      - name: Read the CHANGELOG section
+        if: github.event_name == 'push'
+        run: scripts/changelog-release.py notes "$VERSION" "$RUNNER_TEMP/changelog.md"
+
+      - name: Write the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$TAG" --jq .body > "$RUNNER_TEMP/generated.md"
+          scripts/release-notes.py "$VERSION" "$RUNNER_TEMP/changelog.md" dist "$RUNNER_TEMP/generated.md" \
+            > "$RUNNER_TEMP/body.md"
+          cat "$RUNNER_TEMP/body.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the release
+        # Pinned to a commit: this step holds a token that can write to the repository.
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          body_path: ${{ runner.temp }}/body.md
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease }}
+          make_latest: ${{ !(github.event_name == 'workflow_dispatch' && inputs.prerelease) }}
+          files: dist/*

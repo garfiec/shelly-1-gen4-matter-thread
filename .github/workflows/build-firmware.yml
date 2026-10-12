@@ -1,5 +1,5 @@
 # Builds every product line in the builder image. Called by ci.yml (every push
-# to main and every pull request).
+# to main and every pull request) and release.yml (with a version, packaged).
 name: Build firmware
 
 on:
@@ -9,6 +9,16 @@ on:
         description: Builder image, with its tag
         required: true
         type: string
+      version:
+        description: Release version to build (scripts/bump-version.py set); empty builds the sources as they are
+        required: false
+        type: string
+        default: ""
+      package:
+        description: Package each build for release (scripts/ci-package.sh)
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -61,14 +71,20 @@ jobs:
       - name: Pull the builder image
         run: docker pull --quiet "${{ inputs.image }}"
 
+      - name: Set the release version
+        if: inputs.version != ''
+        run: scripts/bump-version.py set "${{ inputs.version }}"
+
       - name: Build
+        env:
+          PACKAGE: ${{ inputs.package }}
         run: |
           docker run --rm \
             -v "$GITHUB_WORKSPACE:$WORKDIR" -w "$WORKDIR" \
-            -e SHELLY_WERROR=1 \
+            -e PROJECT -e PACKAGE -e SHELLY_WERROR=1 \
             -e CCACHE_DIR="$WORKDIR/.ccache" -e CCACHE_MAXSIZE=500M \
             "${{ inputs.image }}" \
-            scripts/ci-build.sh "$PROJECT"
+            bash -c 'scripts/ci-build.sh "$PROJECT" && if [ "$PACKAGE" = true ]; then scripts/ci-package.sh "$PROJECT"; fi'
 
       - name: Give the files back to the runner user
         if: always()
@@ -100,3 +116,11 @@ jobs:
             ${{ env.PROJECT }}/build/flasher_args.json
             ${{ env.PROJECT }}/build/project_description.json
             ${{ env.PROJECT }}/sdkconfig
+
+      - uses: actions/upload-artifact@v7
+        if: inputs.package
+        with:
+          name: package-${{ steps.name.outputs.slug }}
+          retention-days: 7
+          if-no-files-found: error
+          path: dist/*

@@ -15,11 +15,12 @@
 {/if}
 {#if s.caps.switch_modes}
   {#each s.switch as _, i (i)}
-    <Card title={two ? `Wall switch ${i + 1} (SW${i + 1})` : 'Wall switch'}>
+    <Card title={two ? `Wall switch ${i + 1} (SW${i + 1})` : s.profile?.next === 'opener' ? 'Wall switch (garage door opener)' : 'Wall switch'}>
       <SwitchMode ch={i + 1} {two} />
     </Card>
   {/each}
 {/if}
 <p class="muted small">
-  A change waits for 3 presses of the device's button.{s.caps.switch_modes ? ' A switch mode then applies at once.' : ''}
+  {s.presses ? "On this open network, a change waits for 3 presses of the device's button." : 'A change is saved when you press Save.'}
+  {s.caps.switch_modes ? 'A switch mode applies at once.' : ''}
 </p>

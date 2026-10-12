@@ -34,8 +34,11 @@ export interface State {
   pending: Pending | null;
   // now: this boot's network; next: the next time Wi-Fi mode starts.
   wifi: { ssid: string; now: WifiSecurity; next: WifiSecurity };
-  // Changes saved with 3 presses this boot.
+  // Changes saved this boot, at once or with 3 presses.
   saves: number;
+  // Whether a change waits for 3 presses (on an open network). The Wi-Fi
+  // mode password always does.
+  presses: boolean;
 }
 
 export interface MeterChannel {
@@ -88,7 +91,8 @@ export interface Result {
   msg: string;
 }
 
-// Settings that wait for 3 presses of the button (B-26).
+// Settings: saved at once, or after 3 presses of the button on an open
+// network or for the Wi-Fi mode password (B-26).
 export type Setting =
   | { key: 'code'; value: string }
   | { key: 'code.random' }

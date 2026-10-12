@@ -164,14 +164,14 @@ Every device ships with the calibration measured on a reference unit, so this is
 
 1. Plug a steady resistive load of at least 50 W (a space heater, a kettle or an incandescent bulb; not LED lights, chargers or motors) through your meter into the device's output, and turn that relay on. Keep it well under the rating: 10 A per relay on the 2PM.
 2. Wait a few seconds for the reading to settle, then enter what your meter shows: volts, amps and watts. Leave a box empty to keep that value as it is. On the 2PM, choose the relay first; voltage is shared by both relays, current and power are per relay.
-3. Press **Calibrate**, then press the device's button **3 times** within 2 minutes to save it ([Save the change](BUTTON-AND-LED.md#what-each-action-does)). It applies at once.
+3. Press **Calibrate**. It is saved and applies at once; on an open Wi-Fi mode network, press the device's button **3 times** within 2 minutes to save it ([Save the change](BUTTON-AND-LED.md#what-each-action-does)).
 
 The device works out the correction from its own last 5 seconds of readings, so what the page displays doesn't need to match the moment you read your meter exactly. It refuses when:
 - the load is under 0.5 A (for current) or 50 W (for power), or the voltage is under 80 V: too small to calibrate accurately;
 - the readings changed by more than 3% in those 5 seconds (wait until the load is steady);
 - the correction would be more than 15% from the built-in calibration (a typo, or the meter on a different load). The overcurrent protection uses these readings, so the bound also limits how far a mistake can move it.
 
-Without a watts value, power follows the voltage and current corrections. **Back to the built-in calibration** undoes it (also with 3 presses). The calibration is kept through firmware updates and factory resets: it describes the hardware, not the pairing. A firmware update with better built-in values keeps your unit's calibration as it was.
+Without a watts value, power follows the voltage and current corrections. **Back to the built-in calibration** undoes it, saved the same way. The calibration is kept through firmware updates and factory resets: it describes the hardware, not the pairing. A firmware update with better built-in values keeps your unit's calibration as it was.
 
 Wi-Fi mode is how you install firmware, so a meter fault there must not lock you out of it: if a Wi-Fi mode boot stops unexpectedly (a crash, a hang, or the mode failing to start) while the meter runs, later Wi-Fi mode boots leave the meter off, and the Meter tab says so, until the next power cycle. Without the meter, overcurrent and overvoltage protection are off in those Wi-Fi mode boots, so the relays start off instead of returning to their state (you can still switch them on); over-temperature still runs. Metering and protection in normal operation are not affected. Not yet tested on hardware.
 

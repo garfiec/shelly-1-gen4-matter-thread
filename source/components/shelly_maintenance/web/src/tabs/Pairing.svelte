@@ -2,7 +2,7 @@
   import { set } from '../lib/api';
   import Card from '../lib/Card.svelte';
   import Message from '../lib/Message.svelte';
-  import { app, kick, say } from '../lib/store.svelte';
+  import { app, beforeSave, expectSaved, kick, say } from '../lib/store.svelte';
 
   const s = $derived(app.state!);
   const c = $derived(s.code);
@@ -31,14 +31,21 @@
 
   function send(p: Promise<{ ok: boolean; msg: string }>) {
     say('code', '');
+    const before = beforeSave();
     p.then((r) => {
       if (!r.ok) say('code', r.msg, 'bad');
+      else expectSaved(before, 'code');
       kick();
     });
   }
 </script>
 
 <Card title="Matter setup code">
+  <div class="offline" role="note">
+    <strong>Exit Wi-Fi mode to pair.</strong>
+    Matter's Thread and Bluetooth radios are off while this mode is on, so your Matter app can't find the device.
+    Tap Exit (top right) to restart it normally. If the LED doesn't show the pairing blink, press the button 3 times.
+  </div>
   <div class="pair">
     {#if qrOk}
       <!-- The QR changes only with the code: the query makes the browser fetch the new one. -->
@@ -53,7 +60,7 @@
     </div>
   </div>
   <p class="muted small help">
-    Scan the QR or type the code in your Matter app once you exit this mode. {resetNote}
+    Scan the QR or type the code in your Matter app after you exit. {resetNote}
     Anyone who joins this network can see it while the mode is on.
   </p>
 </Card>
@@ -73,11 +80,23 @@
     <button class="primary" disabled={!typed.trim()} onclick={() => send(set({ key: 'code', value: typed }))}>Use this code</button>
     <button onclick={() => send(set({ key: 'code.random' }))}>Make a new random code</button>
   </div>
-  <p class="muted small" style="margin:10px 0 0">Either waits for 3 presses of the device's button before it is saved.</p>
+  {#if s.presses}
+    <p class="muted small" style="margin:10px 0 0">On this open network, either waits for 3 presses of the device's button before it is saved.</p>
+  {/if}
   <Message name="code" />
 </Card>
 
 <style>
+  .offline {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    border-left: 5px solid var(--warn-line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 0 0 16px;
+    line-height: 1.45;
+  }
+  .offline strong { display: block; margin-bottom: 2px; }
   .pair { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
   .qr {
     width: 168px;

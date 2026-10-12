@@ -1,12 +1,12 @@
 <script lang="ts">
   import { PROFILE_NAMES, set, type Profile } from './api';
   import Message from './Message.svelte';
-  import { app, kick, say } from './store.svelte';
+  import { app, beforeSave, expectSaved, kick, say } from './store.svelte';
 
   const prof = $derived(app.state!.profile);
   const options: { v: Profile; hint: string }[] = [
     { v: 'outlet', hint: 'The relay stays on or off until it is switched again' },
-    { v: 'opener', hint: 'Each toggle closes the relay for about half a second, like pressing the opener’s wall button' },
+    { v: 'opener', hint: 'Each toggle closes the relay for about half a second, like pressing the opener’s wall button. Saving it sets the wall switch to Push button; going back to Outlet restores the mode you had' },
   ];
 
   // Follows the device until you pick another type; back to it after a save or cancel.
@@ -22,8 +22,11 @@
   function save() {
     say('profile', '');
     if (chosen === prof.next) return;
-    set({ key: 'profile', value: chosen }).then((r) => {
+    const before = beforeSave();
+    const want = chosen;
+    set({ key: 'profile', value: want }).then((r) => {
       if (!r.ok) say('profile', r.msg, 'bad');
+      else expectSaved(before, 'profile', want);
       kick();
     });
   }

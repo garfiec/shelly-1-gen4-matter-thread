@@ -67,9 +67,24 @@ function fromHash() {
   kick();
 }
 
-// ---- A change waiting for 3 presses: when it goes away, say whether it was saved
+// ---- A change saved, at once or after 3 presses: say whether it was
 
-let waiting: (Pending & { cal: string; saves: number }) | null = null;
+let waiting: (Pending & { cal: string; saves: number; atOnce?: boolean }) | null = null;
+
+// Before a set: the saves count and calibration as they are now, so a poll
+// that lands while the request is out can't hide the save.
+export function beforeSave() {
+  return { saves: app.state?.saves ?? 0, cal: app.meter ? JSON.stringify(app.meter.cal) : '' };
+}
+
+// After a set the device accepted: if it saved at once (no presses needed),
+// report it from the next state the way a pressed change is reported. A
+// code's value is left empty: the saves count tells.
+export function expectSaved(before: ReturnType<typeof beforeSave>, kind: Pending['kind'], value = '', ch = 1) {
+  const s = app.state;
+  if (!s || s.presses || kind === 'wifi') return;
+  waiting = { kind, value, ch, secs: 0, sticker: false, cal: before.cal, saves: before.saves, atOnce: true };
+}
 
 function settle(s: State) {
   const p = s.pending;
@@ -78,10 +93,12 @@ function settle(s: State) {
     return;
   }
   if (!waiting) return;
+  // A state fetched before the save landed: wait for the next one.
+  if (waiting.atOnce && s.saves === waiting.saves) return;
   const w = waiting;
   waiting = null;
   if (w.kind === 'code') {
-    if (s.code.text === w.value) say('code', `Saved. Pair with ${s.code.text} once you exit.`, 'good');
+    if (w.value ? s.code.text === w.value : s.saves !== w.saves) say('code', `Saved. Pair with ${s.code.text} once you exit.`, 'good');
     else say('code', `The change was not saved. The code is still ${s.code.text}.`, 'bad');
   } else if (w.kind === 'switch') {
     const now = s.switch[w.ch - 1];
@@ -90,7 +107,9 @@ function settle(s: State) {
     else say(slot, `The change was not saved. The switch is still ${MODE_NAMES[now] ?? now}.`, 'bad');
   } else if (w.kind === 'profile') {
     const next = s.profile.next;
-    if (next === w.value) say('profile', `Saved: ${PROFILE_NAMES[next]}, once the device is back in normal operation.`, 'good');
+    // Saving a type also sets the wall switch mode that suits it.
+    const sw = s.caps.switch_modes ? ` The wall switch is now ${MODE_NAMES[s.switch[0]] ?? s.switch[0]}.` : '';
+    if (next === w.value) say('profile', `Saved: ${PROFILE_NAMES[next]}, once the device is back in normal operation.${sw}`, 'good');
     else say('profile', `The change was not saved. It is still ${PROFILE_NAMES[next] ?? next}.`, 'bad');
   } else if (w.kind === 'wifi') {
     if (s.saves === w.saves) say('wifi', 'The change was not saved.', 'bad');

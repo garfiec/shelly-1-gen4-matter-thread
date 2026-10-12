@@ -42,6 +42,7 @@ let saves = 0;
 // The Mini's device type: this boot's, and the saved one.
 const profileNow = 'outlet';
 let profileNext = 'outlet';
+let outletMode = 'toggle';
 
 function state() {
   const d = DEVICES[dev];
@@ -55,6 +56,7 @@ function state() {
     profile: dev === 'mini' ? { now: profileNow, next: profileNext } : { now: 'outlet', next: 'outlet' },
     wifi: { ssid: `Shelly${d.hw.replace(/^S/, '').replace('Mini1G4', '1MiniG4')}-020000123456`, now: (wifiNow ??= wifiNext()), next: wifiNext() },
     saves,
+    presses: presses(),
     pending: pending && {
       kind: pending.kind,
       value: pending.value,
@@ -113,7 +115,19 @@ function json(res: ServerResponse, v: unknown, status = 200) {
 
 const ok = { ok: true, msg: '' };
 
+// Like the device: saved at once behind a password, after 3 presses on an
+// open network or for the Wi-Fi mode password.
+function presses() {
+  return (wifiNow ??= wifiNext()) === 'open';
+}
+
 function stage(kind: string, value: string, ch: number, apply: () => void, sticker = false) {
+  if (kind !== 'wifi' && !presses()) {
+    apply();
+    saves++;
+    pending = null;
+    return;
+  }
   pending = { kind, value, ch, until: Date.now() + 120000, sticker, apply };
 }
 
@@ -204,7 +218,18 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
       case 'profile':
         if (dev !== 'mini' || !['outlet', 'opener'].includes(b.value))
           return json(res, { ok: false, msg: 'This device has no device type to choose, or that type is unknown' }, 400);
-        stage('profile', b.value, 0, () => (profileNext = b.value));
+        stage('profile', b.value, 0, () => {
+          // Like the device: opener sets Push button, outlet restores the mode it had.
+          if (b.value !== profileNext) {
+            if (b.value === 'opener') {
+              outletMode = modes[0];
+              modes[0] = 'push';
+            } else {
+              modes[0] = outletMode;
+            }
+          }
+          profileNext = b.value;
+        });
         return json(res, ok);
       case 'code.random':
         stage('code', '3184-207-5562', 0, () => (code = { text: '3184-207-5562', source: 'generated', new: true }));

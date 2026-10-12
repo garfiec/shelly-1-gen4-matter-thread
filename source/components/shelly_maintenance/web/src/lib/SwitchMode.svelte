@@ -1,7 +1,7 @@
 <script lang="ts">
   import { MODE_NAMES, set, type SwitchMode } from './api';
   import Message from './Message.svelte';
-  import { app, kick, say } from './store.svelte';
+  import { app, beforeSave, expectSaved, kick, say } from './store.svelte';
 
   let { ch, two }: { ch: number; two: boolean } = $props();
 
@@ -15,7 +15,7 @@
       ? [
           { v: 'toggle', hint: 'An ordinary on/off switch: any flip triggers the opener' },
           { v: 'push', hint: 'A button that springs back: each press triggers the opener once' },
-          { v: 'follow', hint: 'Switching on triggers the opener; switching off does nothing' },
+          { v: 'follow', hint: 'Hold to run: the relay stays closed while the switch is on (at least 500 ms)' },
           { v: 'disabled', hint: 'The switch does nothing' },
         ]
       : [
@@ -39,8 +39,11 @@
   function save() {
     say(slot, '');
     if (chosen === now) return;
-    set({ key: 'switch.mode', ch, value: chosen }).then((r) => {
+    const before = beforeSave();
+    const want = chosen;
+    set({ key: 'switch.mode', ch, value: want }).then((r) => {
       if (!r.ok) say(slot, r.msg, 'bad');
+      else expectSaved(before, 'switch', want, ch);
       kick();
     });
   }
@@ -51,7 +54,7 @@
   {#each options as o (o.v)}
     <label class="mode" class:sel={chosen === o.v}>
       <input type="radio" name={`sw${ch}`} value={o.v} checked={chosen === o.v} onchange={() => (picked = o.v)} />
-      <span><b>{MODE_NAMES[o.v]}</b><br /><span class="muted small">{o.hint}</span></span>
+      <span><b>{MODE_NAMES[o.v]}</b>{#if opener && o.v === 'push'} <span class="rec">(Recommended)</span>{/if}<br /><span class="muted small">{o.hint}</span></span>
     </label>
   {/each}
 </div>
@@ -62,6 +65,7 @@
 
 <style>
   .modes { display: grid; gap: 8px; }
+  .rec { color: var(--good); font-weight: 600; }
   .mode {
     display: flex;
     gap: 10px;

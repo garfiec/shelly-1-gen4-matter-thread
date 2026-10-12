@@ -100,7 +100,7 @@ static volatile bool s_uploading = false;
 static volatile bool s_restart = false;
 static char s_mac[18];
 static char s_ssid[33];
-// What this boot's network uses: open if the password was refused.
+// What this boot's network uses: open if the secured one didn't start.
 static shelly_wifi_security_t s_security = SHELLY_WIFI_OPEN;
 
 static uint32_t uptime_ms(void)
@@ -157,6 +157,16 @@ static const char *stock_model_name()
         return "1MiniG4";
     }
     return code[0] == 'S' ? code + 1 : code;
+}
+
+// Out of memory while the meter runs: likely the meter's doing, not the
+// password's. Failing lets the next attempt run without the meter
+// (shelly_maintenance_meter_allowed()) and keep its password. With the
+// meter off (none on this board, or skipped this boot) nothing is left to
+// drop, so this must be false then, or Wi-Fi mode would never start.
+static bool meter_took_memory(esp_err_t err)
+{
+    return err == ESP_ERR_NO_MEM && shelly_cal_available() && !shelly_maintenance_meter_skipped();
 }
 
 static esp_err_t start_wifi(void)
@@ -216,7 +226,8 @@ static esp_err_t start_wifi(void)
     wifi_config_t ap_cfg = {};
     int n = snprintf((char *)ap_cfg.ap.ssid, sizeof(ap_cfg.ap.ssid), "Shelly%s-%02X%02X%02X%02X%02X%02X",
                      stock_model_name(), base[0], base[1], base[2], base[3], base[4], base[5]);
-    ap_cfg.ap.ssid_len = (uint8_t)(n < (int)sizeof(ap_cfg.ap.ssid) ? n : (int)sizeof(ap_cfg.ap.ssid));
+    // Cut short, snprintf keeps sizeof - 1 characters and its NUL.
+    ap_cfg.ap.ssid_len = (uint8_t)(n < (int)sizeof(ap_cfg.ap.ssid) ? n : (int)sizeof(ap_cfg.ap.ssid) - 1);
     memcpy(s_ssid, ap_cfg.ap.ssid, ap_cfg.ap.ssid_len);
     s_ssid[ap_cfg.ap.ssid_len] = '\0';
     ap_cfg.ap.channel = AP_CHANNEL;
@@ -234,24 +245,27 @@ static esp_err_t start_wifi(void)
     } else {
         ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
     }
-    memset(password, 0, sizeof(password));
+    explicit_bzero(password, sizeof(password));
 
     err = esp_wifi_set_mode(WIFI_MODE_AP);
     if (err == ESP_OK) {
         err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
-        if (err != ESP_OK && s_security != SHELLY_WIFI_OPEN) {
+        if (err == ESP_OK) {
+            err = esp_wifi_start();
+        }
+        if (err != ESP_OK && s_security != SHELLY_WIFI_OPEN && !meter_took_memory(err)) {
             // Never lock the way to reflash: an open network rather than none.
-            ESP_LOGE(TAG, "The password was refused (%s): the network is open this time", esp_err_to_name(err));
+            ESP_LOGE(TAG, "The secured network didn't start (%s): it is open this time", esp_err_to_name(err));
             memset(ap_cfg.ap.password, 0, sizeof(ap_cfg.ap.password));
             ap_cfg.ap.authmode = WIFI_AUTH_OPEN;
             s_security = SHELLY_WIFI_OPEN;
             err = esp_wifi_set_config(WIFI_IF_AP, &ap_cfg);
+            if (err == ESP_OK) {
+                err = esp_wifi_start();
+            }
         }
     }
-    memset(ap_cfg.ap.password, 0, sizeof(ap_cfg.ap.password));
-    if (err == ESP_OK) {
-        err = esp_wifi_start();
-    }
+    explicit_bzero(ap_cfg.ap.password, sizeof(ap_cfg.ap.password));
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "Maintenance network \"%s\" up at 192.168.33.1, %s", s_ssid,
                  s_security == SHELLY_WIFI_OWN       ? "with your own password"
@@ -325,6 +339,35 @@ static esp_err_t send_result(httpd_req_t *req, const char *status, bool ok, cons
     char body[320];
     snprintf(body, sizeof(body), "{\"ok\":%s,\"msg\":\"%s\"}", ok ? "true" : "false", msg);
     return send_json(req, status, body);
+}
+
+// Whether a change made on the page waits for 3 presses of the button
+// (B-26). Behind a password, joining the network already takes the
+// sticker code or the owner's password, so a change saves at once; on an
+// open network anyone in range could make it, so it waits for someone at
+// the device. The Wi-Fi mode password always waits: a mistyped one would
+// lock the owner out of the page, the only way to reflash without opening
+// the case.
+static bool change_needs_presses(shelly_change_kind_t kind)
+{
+    return kind == SHELLY_CHANGE_WIFI_PASSWORD || s_security == SHELLY_WIFI_OPEN;
+}
+
+// The reply to a change just staged: saved at once if it needn't wait.
+static esp_err_t staged_reply(httpd_req_t *req)
+{
+    shelly_change_t change;
+    if (!shelly_change_pending(&change, nullptr) || change_needs_presses(change.kind)) {
+        return send_result(req, "200 OK", true, "");
+    }
+    if (!shelly_change_confirm()) {
+        shelly_change_cancel();
+        status_led_flash_refused();
+        return send_result(req, "500 Internal Server Error", false, "The change could not be saved");
+    }
+    // The same long flash as a save with the button (LED-15).
+    status_led_flash_accepted();
+    return send_result(req, "200 OK", true, "");
 }
 
 static esp_err_t page_get(httpd_req_t *req)
@@ -430,12 +473,14 @@ static esp_err_t state_get(httpd_req_t *req)
     // password itself is never sent.
     char next_password[WIFI_PASSWORD_MAX + 1];
     shelly_wifi_security_t next = shelly_wifi_password_choose(next_password);
-    memset(next_password, 0, sizeof(next_password));
+    explicit_bzero(next_password, sizeof(next_password));
     cJSON *w = cJSON_AddObjectToObject(root, "wifi");
     cJSON_AddStringToObject(w, "ssid", s_ssid);
     cJSON_AddStringToObject(w, "now", wifi_security_name(s_security));
     cJSON_AddStringToObject(w, "next", wifi_security_name(next));
     cJSON_AddNumberToObject(root, "saves", shelly_change_saved_count());
+    // Whether a change other than the Wi-Fi password waits for 3 presses.
+    cJSON_AddBoolToObject(root, "presses", change_needs_presses(SHELLY_CHANGE_SETUP_CODE));
 
     // A change waiting for 3 presses (B-26).
     shelly_change_t change;
@@ -532,13 +577,13 @@ static esp_err_t do_toggle(httpd_req_t *req, int ch)
     return send_result(req, "200 OK", ok, ok ? "" : "The relay refused to switch (over-temperature or protection)");
 }
 
-// The owner's 11-digit code, as typed. It waits for 3 presses of the button
-// (docs/BUTTON-AND-LED.md, B-26) before it is saved.
+// The owner's 11-digit code, as typed. Saved at once, or after 3 presses
+// of the button on an open network (change_needs_presses).
 static esp_err_t stage_code(httpd_req_t *req, const char *text)
 {
     switch (shelly_setup_code_stage_manual(text)) {
     case SETUP_CODE_OK:
-        return send_result(req, "200 OK", true, "");
+        return staged_reply(req);
     case SETUP_CODE_ERR_CHECK_DIGIT:
         return send_result(req, "400 Bad Request", false, "That code has a typo: check each digit");
     case SETUP_CODE_ERR_LONG_FORM:
@@ -754,10 +799,10 @@ static esp_err_t stage_cal(httpd_req_t *req, const char *text)
     }
     ESP_LOGI(TAG, "Calibration staged for relay %d: V x%.4f, I x%.4f, P x%.4f", ch + 1, out.q[CAL_Q_V],
              out.q[CAL_Q_I(ch)], out.q[CAL_Q_P(ch)]);
-    return send_result(req, "200 OK", true, "");
+    return staged_reply(req);
 }
 
-// Back to the built-in calibration, after 3 presses.
+// Back to the built-in calibration (saved as change_needs_presses says).
 static esp_err_t stage_cal_reset(httpd_req_t *req)
 {
     cal_ratios_t def;
@@ -765,7 +810,7 @@ static esp_err_t stage_cal_reset(httpd_req_t *req)
     if (!shelly_cal_stage(0, &def)) {
         return send_result(req, "400 Bad Request", false, "This device has no meter");
     }
-    return send_result(req, "200 OK", true, "");
+    return staged_reply(req);
 }
 #endif
 
@@ -777,6 +822,8 @@ static cJSON *read_json_body(httpd_req_t *req, esp_err_t *reply)
         return nullptr;
     }
     cJSON *body = cJSON_Parse(text);
+    // It may hold a Wi-Fi mode password.
+    explicit_bzero(text, sizeof(text));
     if (!cJSON_IsObject(body)) {
         cJSON_Delete(body);
         *reply = send_result(req, "400 Bad Request", false, "The request was not understood");
@@ -827,7 +874,7 @@ static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
     }
     if (strcmp(key, "code.random") == 0) {
         shelly_setup_code_stage_random();
-        return send_result(req, "200 OK", true, "");
+        return staged_reply(req);
     }
     if (strcmp(key, "switch.mode") == 0) {
         ui_switch_mode_t mode;
@@ -836,7 +883,7 @@ static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
             return send_result(req, "400 Bad Request", false,
                                "This device has no wall switch modes, or that mode is unknown");
         }
-        return send_result(req, "200 OK", true, "");
+        return staged_reply(req);
     }
 #if CONFIG_SHELLY_HAS_METER
     if (strcmp(key, "cal") == 0) {
@@ -854,8 +901,13 @@ static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
 #endif
     if (strcmp(key, "wifi.password") == 0) {
         // "" would stage the default: that has its own key.
-        const char *value = json_str(body, "value");
-        if (value[0] == '\0' || !shelly_wifi_password_stage(value)) {
+        char *value = cJSON_GetStringValue(cJSON_GetObjectItemCaseSensitive(body, "value"));
+        bool staged = value != nullptr && value[0] != '\0' && shelly_wifi_password_stage(value);
+        if (value != nullptr) {
+            // cJSON_Delete() frees it without wiping it.
+            explicit_bzero(value, strlen(value));
+        }
+        if (!staged) {
             return send_result(req, "400 Bad Request", false,
                                "Use 8 to 63 characters: letters, digits, spaces and symbols, without accents or emoji");
         }
@@ -871,7 +923,7 @@ static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
             return send_result(req, "400 Bad Request", false,
                                "This device has no device type to choose, or that type is unknown");
         }
-        return send_result(req, "200 OK", true, "");
+        return staged_reply(req);
     }
     if (strcmp(key, "cancel") == 0) {
         shelly_change_cancel();
@@ -880,7 +932,8 @@ static esp_err_t set_dispatch(httpd_req_t *req, const cJSON *body)
     return send_result(req, "400 Bad Request", false, "This device has no such setting");
 }
 
-// POST /api/set: a setting that waits for 3 presses of the button (B-26).
+// POST /api/set: a setting, saved at once or after 3 presses of the button
+// (change_needs_presses, B-26).
 static esp_err_t set_post(httpd_req_t *req)
 {
     touch();

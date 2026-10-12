@@ -20,10 +20,12 @@
 // setup code (shelly_setup_code.h), the wall-switch mode, the Wi-Fi mode
 // password (shelly_wifi_password.h), on metered boards the meter
 // calibration (shelly_calibration.h) and, where the build offers it, the
-// device type (device_profile.h). A change made on the page waits here
-// until the button is pressed 3 times within SHELLY_CHANGE_CONFIRM_S
-// (docs/BUTTON-AND-LED.md, B-26), so nobody who joins the network can
-// change a setting without the device in hand.
+// device type (device_profile.h). A change made on the page is staged here,
+// then saved by shelly_change_confirm(): at once by the page server behind
+// a Wi-Fi password, or by 3 presses of the button within
+// SHELLY_CHANGE_CONFIRM_S for the Wi-Fi mode password and on an open
+// network (maintenance.cpp, change_needs_presses; docs/BUTTON-AND-LED.md,
+// B-26).
 
 #pragma once
 
@@ -59,7 +61,7 @@ device_profile_t shelly_profile_saved(void);
 // Whether this build offers the choice (CONFIG_SHELLY_HAS_OPENER_MODE).
 bool shelly_profile_available(void);
 
-// ---- The change waiting for 3 presses ----
+// ---- The change staged by the page ----
 
 #define SHELLY_CHANGE_CONFIRM_S 120
 
@@ -80,7 +82,8 @@ typedef struct {
                                     // SHELLY_CHANGE_CALIBRATION: which relay was measured
     cal_ratios_t cal;               // SHELLY_CHANGE_CALIBRATION: the new ratios
     char wifi_password[WIFI_PASSWORD_MAX + 1]; // SHELLY_CHANGE_WIFI_PASSWORD: the owner's
-                                    // own, or "" to go back to the sticker code (or none)
+                                    // own, or "" to go back to the sticker code (or none);
+                                    // "*" in place of your own from shelly_change_pending()
     device_profile_t profile;       // SHELLY_CHANGE_PROFILE
 } shelly_change_t;
 
@@ -107,6 +110,8 @@ bool shelly_profile_stage(device_profile_t profile);
 void shelly_change_cancel(void);
 
 // The waiting change and the seconds left to confirm it; false if none.
+// A waiting Wi-Fi password comes back masked: "*" for your own, "" for the
+// default.
 bool shelly_change_pending(shelly_change_t *out, uint32_t *secs_left);
 
 // Save the waiting change: a setup code and a device type apply from the

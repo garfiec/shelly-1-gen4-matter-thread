@@ -41,6 +41,17 @@ extern "C" {
 // a pulse early.
 esp_err_t shelly_pulse_write(uint16_t endpoint_id, bool on);
 
+// The button and wall switch with Matter up, in opener mode: the same as
+// shelly_onoff_toggle(), except that a pulse that has ended while OnOff
+// still reads On (the clear waits for the Matter thread) counts as ended,
+// so the input starts a new pulse instead of only clearing OnOff.
+bool shelly_pulse_toggle(uint16_t endpoint_id);
+// Follow mode's hold to run: on starts a pulse (or holds the running one)
+// and keeps the relay closed while the switch stays on, for at least the
+// pulse length; off opens it, without waiting for the CHIP stack lock. A
+// toggle or Matter Off ends a held pulse too. True if the relay did it.
+bool shelly_pulse_toggle_to(uint16_t endpoint_id, bool on);
+
 // At boot in opener mode: the relay and OnOff off, whatever was stored (a
 // restart mid-pulse, or a change from outlet with the relay on).
 esp_err_t shelly_pulse_set_defaults(uint16_t endpoint_id);
@@ -51,8 +62,8 @@ esp_err_t shelly_pulse_set_defaults(uint16_t endpoint_id);
 // relay accepted it.
 esp_err_t shelly_pulse_local_init(void);
 bool shelly_pulse_local(void);
-// Follow mode: on starts a pulse unless one is running; off ends one. True
-// if the relay is now where it was asked to go (a pulse counts as on).
+// Follow mode's hold to run, as shelly_pulse_toggle_to(). True if the
+// relay did it.
 bool shelly_pulse_local_to(bool on);
 
 #ifdef __cplusplus

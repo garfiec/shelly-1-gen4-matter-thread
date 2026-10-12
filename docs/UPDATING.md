@@ -114,7 +114,7 @@ Use the same `.ota` file as for [Matter OTA](#2-get-the-ota-image): `automatous-
 ### 2. Enter the mode
 
 1. Hold the button. After 5 seconds the LED blinks every ½ second: let go.
-2. The LED gives one long flash and the device restarts. The relay drops briefly while it restarts, then returns to its previous state, unless over-temperature or a protection trip refuses it. The Opener's trigger always stays off.
+2. The LED gives one long flash and the device restarts. The relay drops briefly while it restarts, then returns to its previous state, unless over-temperature or a protection trip refuses it. The trigger of the Opener, or of a Mini in Opener mode, always stays off.
 3. The LED shows a double blink: the mode is running.
 
 The hold is refused (three quick flashes) within 60 seconds of an update, because a restart before the update confirms itself would roll it back, and while a Matter OTA download is in progress.
@@ -147,28 +147,30 @@ While the mode lasts:
 
 ### Matter setup code
 
-The page's **Pairing** tab shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. It shows its QR too, and the sticker's code when another is in use. To change it, enter another 11-digit code (the sticker's own goes back to it) or press **Make a new random code**, then press the device's button 3 times within 2 minutes. The LED gives one long flash and the page confirms. Until you press, nothing changes; after 2 minutes, on Cancel or when you leave the mode, the change is dropped. The new code applies once the device is back in normal operation. Your existing pairings keep working either way.
+The page's **Pairing** tab shows the device's [Matter setup code](COMMISSIONING.md#your-setup-code), the code you pair it with. It shows its QR too, and the sticker's code when another is in use. To change it, enter another 11-digit code (the sticker's own goes back to it) or press **Make a new random code**. It is saved at once and the page confirms. On an open network (a device without a sticker code) it instead waits for 3 presses of the device's button within 2 minutes: the LED gives one long flash and the page confirms; until you press nothing changes, and after 2 minutes, on Cancel or when you leave the mode, the change is dropped. See [Save the change](BUTTON-AND-LED.md#what-each-action-does). The new code applies once the device is back in normal operation. Your existing pairings keep working either way. You can't pair from Wi-Fi mode: Matter's Thread and Bluetooth radios are off, as the tab says, so exit first.
 
-Anyone who joins the network can read the code while the mode is on. Changing it needs the button presses, which need the device in hand.
+Anyone who joins the network can read and change the code while the mode is on, so keep the network's password to yourself. On an open network a change needs the button presses, which need the device in hand.
 
 ### Wi-Fi mode password
 
 The network uses WPA2 and WPA3 together: phones and laptops that have WPA3 use it, older ones WPA2. Its password, first match wins:
-1. **Your own**, set on the page's **Home** tab: 8 to 63 characters (letters, digits, spaces and symbols, no accents or emoji), saved with 3 presses of the device's button within 2 minutes, as for the setup code.
+1. **Your own**, set on the page's **Home** tab: 8 to 63 characters (letters, digits, spaces and symbols, no accents or emoji), saved with 3 presses of the device's button within 2 minutes, even behind a password: a mistyped one would lock you out of the page.
 2. **The setup code on the Shelly sticker**, as its 11 digits without the dashes: `2058-491-0137` becomes `20584910137`. It stays the sticker's code even if you pair with another setup code.
 3. **None** on a device whose sticker code can't be read (it then uses a code it made itself, which isn't printed anywhere): the network is open until you set your own.
 
-A new password applies the next time the mode starts, so the connection you are using stays up. The Home tab says what the next one will be; note it before you exit. A factory reset (hold 10-20 s) forgets your own password, so the device always comes back to a password printed on it, or to none: Wi-Fi mode is how you install firmware, and a forgotten password must never lock it. If the device can't start the network with its password, it starts it open rather than not at all, and the page says so.
+A new password applies the next time the mode starts, so the connection you are using stays up. The Home tab says what the next one will be; note it before you exit. A factory reset (hold 10-20 s) forgets your own password, so the device always comes back to a password printed on it, or to none: Wi-Fi mode is how you install firmware, and a forgotten password must never lock it. If the device can't start the network with its password, it starts it open rather than not at all, and the page says so. One exception on the 1PM and 2PM: if it ran out of memory with the meter running, the mode flashes refusal and the device restarts normally. Hold 5 s again: that attempt runs without the meter (see [Calibrating the meter](PROTECTION.md#calibrating-the-meter)) and keeps the password.
 
 ### Wall switch mode
 
-On the Light, Outlet, Mini, 1PM and 2PM, the page's **Switch** tab sets what the wall switch wired to SW does (on the 2PM, SW1 and SW2 each have their own setting, for relay 1 and relay 2): **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position) or **Disabled**. Choose one, press **Save**, then press the device's button 3 times within 2 minutes, as for the setup code. The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
+On the Light, Outlet, Mini, 1PM and 2PM, the page's **Switch** tab sets what the wall switch wired to SW does (on the 2PM, SW1 and SW2 each have their own setting, for relay 1 and relay 2): **Toggle** (the default, for an ordinary on/off switch), **Push button** (for a button that springs back), **Follow** (the relay matches the switch position; on a garage door opener, the relay stays closed while the switch is on) or **Disabled**. Choose one and press **Save**; it is saved at once (on an open network, press the device's button 3 times within 2 minutes, as for the setup code). The new mode applies at once, so you can try it before you exit. See [Wall switch modes](BUTTON-AND-LED.md#wall-switch-modes).
+
+### Meter (Shelly 1PM and 2PM Gen4)
+
+On the 1PM and 2PM, the **Meter** tab shows the meter's live readings (each relay's on the 2PM) and can calibrate the meter against your own plug-in meter, saved the same way. See [Calibrating the meter](PROTECTION.md#calibrating-the-meter).
 
 ### Device type (Shelly 1 Mini Gen4)
 
-On the Mini, the **Switch** tab also sets the **Device type**: **Outlet** (the default) or **Garage door opener**, where every toggle closes the relay for half a second. Save it the same way, with 3 presses; it applies once you exit Wi-Fi mode. The same `outlet` firmware file runs both types, and both keep the pairing. Before wiring a garage door, check that the relay has no voltage of its own (a dry contact), and don't wire a door sensor to SW: the Mini runs on mains, so SW carries mains voltage. Opener mode is not yet verified on hardware. See [Device type](BUTTON-AND-LED.md#device-type).
-
-On the 1PM and 2PM, the **Meter** tab shows the meter's live readings (each relay's on the 2PM) and can calibrate the meter against your own plug-in meter, saved the same way with 3 presses. See [Calibrating the meter](PROTECTION.md#calibrating-the-meter).
+On the Mini, the **Switch** tab also sets the **Device type**: **Outlet** (the default) or **Garage door opener**, where every toggle closes the relay for half a second. Save it the same way; it applies once you exit Wi-Fi mode. Choosing Garage door opener also sets the wall switch to Push button, marked (Recommended) on the page; going back to Outlet restores the wall switch mode you had. The same `outlet` firmware file runs both types, and both keep the pairing. Before wiring a garage door, check that the relay has no voltage of its own (a dry contact), and don't wire a door sensor to SW: the Mini runs on mains, so SW carries mains voltage. Opener mode is not yet verified on hardware. See [Device type](BUTTON-AND-LED.md#device-type).
 
 ---
 

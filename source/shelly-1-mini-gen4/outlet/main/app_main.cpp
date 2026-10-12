@@ -99,16 +99,19 @@ static esp_err_t app_attribute_update_cb(attribute::callback_type_t type, uint16
 
 // The button and the wall switch toggle the relay through the OnOff
 // attribute, so Matter sees every change; in opener mode that write runs
-// the pulse (app_driver.cpp). What each input does in each state is the
-// device UI: docs/BUTTON-AND-LED.md.
+// the pulse (app_driver.cpp), and shelly_pulse_toggle() treats a pulse
+// whose OnOff clear is still queued as ended. What each input does in each
+// state is the device UI: docs/BUTTON-AND-LED.md.
+static bool s_opener = false;
+
 static bool app_toggle(void)
 {
-    return shelly_onoff_toggle(relay_endpoint_id);
+    return s_opener ? shelly_pulse_toggle(relay_endpoint_id) : shelly_onoff_toggle(relay_endpoint_id);
 }
 
 static bool app_toggle_to(bool on)
 {
-    return shelly_onoff_toggle_to(relay_endpoint_id, on);
+    return s_opener ? shelly_pulse_toggle_to(relay_endpoint_id, on) : shelly_onoff_toggle_to(relay_endpoint_id, on);
 }
 
 static void app_switch_changed(bool level, void *arg)
@@ -129,6 +132,9 @@ extern "C" void app_main()
     // Outlet or garage door opener, chosen on the Wi-Fi mode page. Both have
     // the same Matter endpoints; opener mode makes every toggle a pulse.
     const bool opener = shelly_profile_get() == DEVICE_PROFILE_OPENER;
+    s_opener = opener;
+    const shelly_ui_toggle_fn_t local_toggle = opener ? shelly_pulse_local : shelly_local_relay_toggle;
+    const shelly_ui_toggle_to_fn_t local_toggle_to = opener ? shelly_pulse_local_to : shelly_local_relay_toggle_to;
 
     // Wi-Fi maintenance mode (the button held 5 s) is a boot of its own:
     // Matter and Thread are never started. See docs/BUTTON-AND-LED.md.
@@ -143,15 +149,15 @@ extern "C" void app_main()
         }
         shelly_ui_config_t maintenance_ui = {
             .toggle = app_toggle,
-            .local_toggle = opener ? shelly_pulse_local : shelly_local_relay_toggle,
+            .local_toggle = local_toggle,
             .toggle_to = app_toggle_to,
-            .local_toggle_to = opener ? shelly_pulse_local_to : shelly_local_relay_toggle_to,
+            .local_toggle_to = local_toggle_to,
             .switch_role = UI_SWITCH_TOGGLE,
         };
         shelly_ui_init(&maintenance_ui);
         // Opener: the trigger is never restored, or it would stay closed
         // with no pulse timer to release it.
-        shelly_maintenance_run(relay_was_on && !opener, opener ? shelly_pulse_local : shelly_local_relay_toggle);
+        shelly_maintenance_run(relay_was_on && !opener, local_toggle);
     }
 #endif
 
@@ -166,9 +172,9 @@ extern "C" void app_main()
     switch_input_init(app_switch_changed, nullptr);
     shelly_ui_config_t ui_config = {
         .toggle = app_toggle,
-        .local_toggle = opener ? shelly_pulse_local : shelly_local_relay_toggle,
+        .local_toggle = local_toggle,
         .toggle_to = app_toggle_to,
-        .local_toggle_to = opener ? shelly_pulse_local_to : shelly_local_relay_toggle_to,
+        .local_toggle_to = local_toggle_to,
         .switch_role = UI_SWITCH_TOGGLE,
     };
     shelly_ui_init(&ui_config);

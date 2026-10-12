@@ -2,7 +2,7 @@
   import { set } from '../lib/api';
   import Card from '../lib/Card.svelte';
   import Message from '../lib/Message.svelte';
-  import { app, kick, say } from '../lib/store.svelte';
+  import { app, beforeSave, expectSaved, kick, say } from '../lib/store.svelte';
   import { num } from '../lib/format';
 
   const s = $derived(app.state!);
@@ -33,16 +33,20 @@
       say('cal', 'Enter at least one reading from your meter.', 'bad');
       return;
     }
+    const before = beforeSave();
     set({ key: 'cal', ch: two ? ch : 1, v: pv, a: pa, w: pw }).then((r) => {
       if (!r.ok) say('cal', r.msg, 'bad');
+      else expectSaved(before, 'cal');
       kick();
     });
   }
 
   function reset() {
     say('cal', '');
+    const before = beforeSave();
     set({ key: 'cal.reset' }).then((r) => {
       if (!r.ok) say('cal', r.msg, 'bad');
+      else expectSaved(before, 'cal');
       kick();
     });
   }
@@ -115,7 +119,9 @@
       <button class="primary" onclick={calibrate}>Calibrate</button>
       <button onclick={reset}>Back to the built-in calibration</button>
     </div>
-    <p class="muted small" style="margin:10px 0 0">Either waits for 3 presses of the device's button before it is saved.</p>
+    {#if app.state?.presses}
+      <p class="muted small" style="margin:10px 0 0">On this open network, either waits for 3 presses of the device's button before it is saved.</p>
+    {/if}
     <Message name="cal" />
   </Card>
 {/if}

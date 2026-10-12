@@ -17,8 +17,9 @@
 // maintenance.h
 //
 // Wi-Fi maintenance mode: a boot with Matter and Thread off, in which the
-// device runs its own open Wi-Fi network and a web page that installs a
-// firmware update (the Matter .ota file).
+// device runs its own WPA2/WPA3 Wi-Fi network (shelly_wifi_password.h says
+// which password, or none) and a web page that installs a firmware update
+// (the Matter .ota file).
 //
 // Entered by holding the button 5 s (shelly_ui.cpp records the request and
 // restarts); each variant's app_main checks shelly_maintenance_boot_pending()

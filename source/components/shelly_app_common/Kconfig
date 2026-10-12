@@ -27,6 +27,7 @@ menu "Shelly device type"
 
     config SHELLY_PULSE_MS
         int "Opener pulse length (ms)"
+        depends on SHELLY_HAS_OPENER_MODE
         default 500
         range 100 5000
         help

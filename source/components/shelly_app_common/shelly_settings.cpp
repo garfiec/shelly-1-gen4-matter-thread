@@ -40,6 +40,13 @@ static const char *NVS_NAMESPACE = "shelly_cfg";
 static const char *const NVS_KEY_SWITCH_MODE[] = {"sw_mode", "sw_mode2"};
 _Static_assert(RELAY_CHANNELS <= 2, "one switch mode key per channel");
 static const char *NVS_KEY_PROFILE = "profile";
+// SW1's mode while it was an outlet, restored when it goes back to one.
+static const char *NVS_KEY_OUTLET_SWITCH_MODE = "sw_mode_out";
+
+// The wall switch mode the page recommends for a garage door opener, and
+// sets when the device type changes to one: a wall button that springs
+// back triggers the door once per press.
+#define OPENER_SWITCH_MODE UI_SWITCH_MODE_PUSH
 
 // Guards the switch mode and the waiting change (the maintenance page and
 // the button run on their own tasks). Taken before the setup code's own
@@ -159,40 +166,72 @@ device_profile_t shelly_profile_saved(void)
     return p;
 }
 
-static bool save_profile(device_profile_t profile)
+// One setting in NVS_NAMESPACE; what names it in the log.
+static bool save_u8(const char *key, uint8_t value, const char *what)
 {
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
     if (err == ESP_OK) {
-        err = nvs_set_u8(h, NVS_KEY_PROFILE, (uint8_t)profile);
+        err = nvs_set_u8(h, key, value);
         if (err == ESP_OK) {
             err = nvs_commit(h);
         }
         nvs_close(h);
     }
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Saving the device type failed: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Saving the %s failed: %s", what, esp_err_to_name(err));
         return false;
     }
     return true;
 }
 
+static bool save_profile(device_profile_t profile)
+{
+    return save_u8(NVS_KEY_PROFILE, (uint8_t)profile, "device type");
+}
+
 static bool save_switch_mode(int ch, ui_switch_mode_t mode)
 {
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
-    if (err == ESP_OK) {
-        err = nvs_set_u8(h, NVS_KEY_SWITCH_MODE[ch], (uint8_t)mode);
-        if (err == ESP_OK) {
-            err = nvs_commit(h);
+    return save_u8(NVS_KEY_SWITCH_MODE[ch], (uint8_t)mode, "switch mode");
+}
+
+// With s_lock held, after a device type change from `from` to `to` is
+// saved: give SW1 the mode that suits the new type. Outlet to opener keeps
+// the outlet's mode aside and sets OPENER_SWITCH_MODE; opener to outlet
+// puts the kept mode back. A failure here leaves the mode as it was.
+static void switch_mode_follow_profile(device_profile_t from, device_profile_t to)
+{
+    if (from == to || shelly_ui_switch_role() != UI_SWITCH_TOGGLE) {
+        return;
+    }
+    ui_switch_mode_t mode;
+    if (to == DEVICE_PROFILE_OPENER) {
+        if (!save_u8(NVS_KEY_OUTLET_SWITCH_MODE, (uint8_t)s_switch_mode[0], "outlet's switch mode")) {
+            return;
         }
-        nvs_close(h);
+        mode = OPENER_SWITCH_MODE;
+    } else {
+        mode = UI_SWITCH_MODE_TOGGLE;
+        nvs_handle_t h;
+        if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) == ESP_OK) {
+            uint8_t v;
+            if (nvs_get_u8(h, NVS_KEY_OUTLET_SWITCH_MODE, &v) == ESP_OK && v < UI_SWITCH_MODE_COUNT) {
+                mode = (ui_switch_mode_t)v;
+            }
+            nvs_close(h);
+        }
     }
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Saving the switch mode failed: %s", esp_err_to_name(err));
-        return false;
+    if (mode != s_switch_mode[0] && save_switch_mode(0, mode)) {
+        s_switch_mode[0] = mode;
+        ESP_LOGW(TAG, "Wall switch mode set to %s for the new device type", ui_switch_mode_name(mode));
     }
-    return true;
+}
+
+// With s_lock held: nothing waits any more, and no password stays behind.
+static void change_clear(void)
+{
+    s_change.kind = SHELLY_CHANGE_NONE;
+    memset(s_change.wifi_password, 0, sizeof(s_change.wifi_password));
 }
 
 // With s_lock held.
@@ -202,7 +241,7 @@ static bool change_live(void)
         return false;
     }
     if (esp_timer_get_time() - s_change_at_us >= (int64_t)SHELLY_CHANGE_CONFIRM_S * 1000000) {
-        s_change.kind = SHELLY_CHANGE_NONE;
+        change_clear();
         return false;
     }
     return true;
@@ -257,6 +296,8 @@ bool shelly_wifi_password_stage(const char *password)
     change.kind = SHELLY_CHANGE_WIFI_PASSWORD;
     strcpy(change.wifi_password, password);
     shelly_change_stage(&change);
+    // explicit_bzero: the compiler drops a memset of a local about to die.
+    explicit_bzero(change.wifi_password, sizeof(change.wifi_password));
     return true;
 }
 
@@ -275,8 +316,7 @@ bool shelly_profile_stage(device_profile_t profile)
 void shelly_change_cancel(void)
 {
     pthread_mutex_lock(&s_lock);
-    s_change.kind = SHELLY_CHANGE_NONE;
-    memset(s_change.wifi_password, 0, sizeof(s_change.wifi_password));
+    change_clear();
     pthread_mutex_unlock(&s_lock);
 }
 
@@ -287,6 +327,12 @@ bool shelly_change_pending(shelly_change_t *out, uint32_t *secs_left)
     if (live) {
         if (out != nullptr) {
             *out = s_change;
+            // Only whether a password waits leaves this file, so no caller
+            // holds a copy of it.
+            if (out->wifi_password[0] != '\0') {
+                memset(out->wifi_password, 0, sizeof(out->wifi_password));
+                out->wifi_password[0] = '*';
+            }
         }
         if (secs_left != nullptr) {
             int64_t left_us = (int64_t)SHELLY_CHANGE_CONFIRM_S * 1000000 - (esp_timer_get_time() - s_change_at_us);
@@ -324,27 +370,26 @@ bool shelly_change_confirm(void)
         case SHELLY_CHANGE_WIFI_PASSWORD:
             ok = shelly_wifi_password_save(s_change.wifi_password);
             break;
-        case SHELLY_CHANGE_PROFILE:
+        case SHELLY_CHANGE_PROFILE: {
             load_profile();
+            device_profile_t from = s_profile_saved;
             ok = save_profile(s_change.profile);
             if (ok) {
                 s_profile_saved = s_change.profile;
+                switch_mode_follow_profile(from, s_change.profile);
                 ESP_LOGW(TAG, "Device type saved: %s, from the next normal boot",
                          device_profile_name(s_change.profile));
             }
             break;
+        }
         case SHELLY_CHANGE_NONE:
         default:
             break;
         }
         if (ok) {
-            s_change.kind = SHELLY_CHANGE_NONE;
+            change_clear();
             s_saved_count++;
         }
-    }
-    // Don't keep a password in memory longer than needed.
-    if (s_change.kind == SHELLY_CHANGE_NONE) {
-        memset(s_change.wifi_password, 0, sizeof(s_change.wifi_password));
     }
     pthread_mutex_unlock(&s_lock);
     return ok;

@@ -93,7 +93,9 @@ bool shelly_wifi_password_save(const char *password)
 void shelly_wifi_password_factory_reset(void)
 {
     char own[WIFI_PASSWORD_MAX + 1];
-    if (load_own(own) && shelly_wifi_password_save("")) {
+    bool had_own = load_own(own);
+    explicit_bzero(own, sizeof(own));
+    if (had_own && shelly_wifi_password_save("")) {
         ESP_LOGW(TAG, "Factory reset: the Wi-Fi mode password is back to the sticker code, or none");
     }
 }

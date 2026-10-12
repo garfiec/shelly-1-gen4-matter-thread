@@ -4,7 +4,7 @@
 
 This guide covers updating a supported Shelly Gen4 device that is already running the Automatous firmware with Matter OTA support. There are four paths, and the right one depends on whether you want to keep the device's Matter commissioning or not. If you have not flashed the firmware yet, start with the [Flashing Guide](FLASHING.md).
 
-If your Shelly 1 Gen4 is running an Automatous build earlier than v2.0.0, update it with a one-time full reflash over [UART](FLASHING.md#flash-with-usb-uart). The partition layout changed in v2.0.0; this one step erases commissioning and needs to be re-commissioned afterward. From v2.0.0 onward this requirement no longer applies, and further updates are delivered via OTA. The Shelly 1 Mini Gen4 has had the OTA-capable layout since its first release.
+This paragraph only concerns a Shelly 1 Gen4 still running a build of the original Automatous project earlier than v2.0.0. Those builds have no update mechanism, so update it with a one-time full reflash over [UART](FLASHING.md#flash-with-usb-uart). The partition layout changed in v2.0.0; this one step erases commissioning and needs to be re-commissioned afterward. From v2.0.0 onward this requirement no longer applies, and further updates are delivered via OTA. The Shelly 1 Mini Gen4 has had the OTA-capable layout since its first release.
 
 ---
 
@@ -23,13 +23,13 @@ If your Shelly 1 Gen4 is running an Automatous build earlier than v2.0.0, update
 | Path | Preserves commissioning | Hardware | Method |
 |---|---|---|---|
 | Matter OTA through Home Assistant | Yes | None | OTA |
-| Wi-Fi maintenance mode | Yes | A phone or laptop | Upload over the device's own Wi-Fi |
+| Wi-Fi maintenance mode | Yes | A computer or phone | Upload over the device's own Wi-Fi |
 | ESP-IDF CLI | Yes | USB-UART adapter | UART flash |
 | ESPConnect | No | USB-UART adapter | UART flash |
 
 The easiest path is Matter OTA. The new firmware is sent to the device over Thread, the device writes it to its inactive slot and reboots, and its Matter commissioning, Thread credentials, and ecosystem pairings all survive. No wires, no re-pairing.
 
-Wi-Fi maintenance mode needs no Home Assistant and no wires, only a phone or laptop next to the device. Unlike Matter OTA, it can install an older version, and it still works when Thread or Matter is not.
+Wi-Fi maintenance mode needs no Home Assistant and no wires, only a computer or phone next to the device. Unlike Matter OTA, it can install an older version, and it still works when Thread or Matter is not.
 
 ESPConnect is the full reinstall covered in the [Flashing Guide](FLASHING.md#flash-with-espconnect). It is listed here for comparison only. It erases flash, and therefore commissioning, so it is for a first install or switching variants, and not for an in-place update.
 
@@ -121,8 +121,8 @@ The hold is refused (three quick flashes) within 60 seconds of an update, becaus
 
 ### 3. Upload
 
-1. On a phone or laptop, join the Wi-Fi network named like stock Shelly's, `Shelly<model>-<the 12-digit MAC on the sticker>`, for example `Shelly1PMG4-A1B2C3D4E5F6`. Its password is the [Matter setup code on the Shelly sticker](#wi-fi-mode-password), as 11 digits without the dashes, unless you set your own. A device without a sticker code runs an open network, like stock Shelly's setup network. Anyone who joins can use the page, switch the relay and install firmware built for this model, so enter the mode only when you are about to use it, and press **Exit** when you are done.
-2. The update page usually opens on its own. If not, browse to `http://192.168.33.1`. Your phone may warn that the network has no internet; that is expected. The window that opens on its own is the phone's sign-in window, which may not let you choose a file; if choosing the `.ota` does nothing, open `http://192.168.33.1` in your browser.
+1. On a computer or phone, join the Wi-Fi network named like stock Shelly's, `Shelly<model>-<the 12-digit MAC on the sticker>`, for example `Shelly1PMG4-A1B2C3D4E5F6`. Its password is the [Matter setup code on the Shelly sticker](#wi-fi-mode-password), as 11 digits without the dashes, unless you set your own. A device without a sticker code runs an open network, like stock Shelly's setup network. Anyone who joins can use the page, switch the relay and install firmware built for this model, so enter the mode only when you are about to use it, and press **Exit** when you are done.
+2. The update page usually opens on its own. If not, browse to `http://192.168.33.1`. Your computer or phone may warn that the network has no internet; that is expected. The window that opens on its own is the system's sign-in window, which may not let you choose a file; if choosing the `.ota` does nothing, open `http://192.168.33.1` in your browser.
 3. The page has tabs: **Home** (the relays and the device's model, variant and firmware), **Pairing** (the [Matter setup code](#matter-setup-code)), **Switch**, **Meter**, **Update** and **Diagnostics**. Tabs a model doesn't have are hidden. On **Update**, choose the `.ota` file (on a computer you can also drag it onto the page) and press **Install**. The LED stays solid while the file uploads and installs.
 4. The device checks the file before erasing anything, installs it into its inactive slot, verifies it and restarts into it.
 
@@ -153,7 +153,7 @@ Anyone who joins the network can read and change the code while the mode is on, 
 
 ### Wi-Fi mode password
 
-The network uses WPA2 and WPA3 together: phones and laptops that have WPA3 use it, older ones WPA2. Its password, first match wins:
+The network uses WPA2 and WPA3 together: computers and phones that have WPA3 use it, older ones WPA2. Its password, first match wins:
 1. **Your own**, set on the page's **Home** tab: 8 to 63 characters (letters, digits, spaces and symbols, no accents or emoji), saved with 3 presses of the device's button within 2 minutes, even behind a password: a mistyped one would lock you out of the page.
 2. **The setup code on the Shelly sticker**, as its 11 digits without the dashes: `2058-491-0137` becomes `20584910137`. It stays the sticker's code even if you pair with another setup code.
 3. **None** on a device whose sticker code can't be read (it then uses a code it made itself, which isn't printed anywhere): the network is open until you set your own.

@@ -67,10 +67,10 @@ source/
 │   ├── outlet/          # 0x8005, Outlet
 │   └── light-switch/    # 0x8006, Light Switch (released by the original project before 3.0.0)
 ├── shelly-1pm-gen4/
-│   ├── app/             # The app: Outlet, Light, with metering and protection (experimental)
+│   ├── app/             # The app: Outlet, Light, with metering and protection
 │   └── outlet/          # 0x8009, Outlet
 └── shelly-2pm-gen4/
-    ├── app/             # The app: Outlet, Light, two relays with metering each (experimental)
+    ├── app/             # The app: Outlet, Light, two relays with metering each
     ├── outlet/          # 0x8007, Outlet
     └── light/           # 0x8008, Light
 ```

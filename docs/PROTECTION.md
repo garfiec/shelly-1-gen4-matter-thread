@@ -6,7 +6,7 @@ This page explains how the firmware protects the load and the device, how it mea
 
 > ⚠️ **This is secondary protection.** The circuit breaker in your panel is the primary protection for the wiring and the load, and nothing here replaces it. The firmware can only open the relay earlier than a breaker would, or tell you that something is wrong. It cannot open a welded relay, and it cannot see what the meter cannot measure.
 
-> ⚠️ **Shelly 1PM Gen4 and 2PM Gen4 support is experimental.** The metering and electrical protection described here have not been verified on hardware yet, apart from the 2PM meter readings used for its calibration. Every hardware-dependent assumption is designed to fail safe, and the assumptions are listed in [What has not been verified](#what-has-not-been-verified).
+> ⚠️ **Not yet verified on hardware.** The metering and electrical protection described here have not been verified on hardware yet, apart from the 2PM meter readings used for its calibration. Every hardware-dependent assumption is designed to fail safe, and the assumptions are listed in [What has not been verified](#what-has-not-been-verified).
 
 ---
 
@@ -200,7 +200,7 @@ The limits are compile-time settings. To change them, [build from source](BUILDI
 
 ## What has not been verified
 
-No part of the 1PM support has run on hardware yet. On the 2PM, the meter readings and their calibration were measured on hardware with the bring-up build (1.0.0), which only read the meter; the metering build (1.0.1), its protection and the calibration page have not run yet. Each assumption below fails safe if it is wrong:
+The 1PM firmware has run and paired on one unit (installed from stock 2.0.1 through the web UI), but its metering and protection have not been verified on hardware. On the 2PM, the meter readings and their calibration were measured on hardware with the bring-up build (1.0.0), which only read the meter; the metering build (1.0.1), its protection and the calibration page have not run yet. Each assumption below fails safe if it is wrong:
 
 | Assumption | If it is wrong |
 |---|---|

@@ -48,18 +48,18 @@ Once the firmware is up and running, updates are applied through Home Assistant 
 
 Tested on several Shelly 1 Gen4s and Shelly 1 Mini Gen4s, all hardware revision **v0.1.2** (printed on the PCB). Other revisions should work but have not been verified. If you have a different revision, please [open an issue](../../../issues/new) with your findings.
 
-The Shelly 1PM Gen4 firmware is **experimental and not yet verified on hardware**. Work through the [checklist](#shelly-1pm-gen4-checklist) below before flashing one. The Shelly 2PM Gen4 builds are experimental too: see the [2PM checklist](#shelly-2pm-gen4-checklist).
+The Shelly 1PM Gen4 firmware has run and paired on one unit, but its metering and protection are not yet verified on hardware. Work through the [checklist](#shelly-1pm-gen4-checklist) below before flashing one. For the Shelly 2PM Gen4, see the [2PM checklist](#shelly-2pm-gen4-checklist).
 
 ---
 
 ## Shelly 1PM Gen4 checklist
 
-The 1PM firmware switches a metered 15 A load and has not run on hardware yet. Its pin map was taken from one unit, so a board that differs could drive the relay from the wrong pin. Do each of these before you flash, and stop at the first one that does not match.
+The 1PM firmware switches a metered 15 A load, and its metering and protection are not yet verified on hardware. Its pin map was taken from one unit, so a board that differs could drive the relay from the wrong pin. Do each of these before you flash, and stop at the first one that does not match.
 
 1. **PCB revision.** Open the case and read the revision printed on the board. It must be **v0.1.2**, the revision the [GPIO map](GPIO.md#shelly-1pm-gen4) was taken from. If it is anything else, do not flash; [open an issue](../../../issues/new) with a photo instead.
 2. **Hardware code.** In the stock web UI, open the device information and read the model or app code. The web UI package is built for `S1PMG4`; if your unit reports something else, the web UI will refuse the package, and you should report the code.
 3. **eFuse check (read-only).** With the device in flash mode, run `espefuse.py --chip esp32c6 --port <PORT> summary` and confirm that `SPI_BOOT_CRYPT_CNT` is 0, `SECURE_BOOT_EN` is False and `DIS_DOWNLOAD_MODE` is False. This command only reads. If any of them is set, stop: the chip is locked down and a restore may not be possible.
-4. **Full UART backup.** For the 1PM, the [full 8MB backup](#2-back-up-the-original-shelly-firmware) is required, not optional, and verify it with `verify_flash`. It is your way back if the firmware does not suit your unit.
+4. **Full UART backup.** For the 1PM, the [full 8MB backup](#2-back-up-the-original-shelly-firmware) is required, not optional, and verify it with `verify-flash`. It is your way back if the firmware does not suit your unit.
 5. **Install on mains, then commission.** The meter only appears once the device has seen AC mains. Bench power from the UART adapter is 3.3V DC, so a 1PM commissioned on the bench shows no power metering; after it is installed and restarted on mains the metering appears, and Home Assistant may need to re-interview the device. Commissioning after installation avoids that. On bench power the status LED may also flash very fast (100ms on, 100ms off) instead of the 200ms commissioning blink: that is the meter-lost alert, because the power meter has no mains to measure, and it clears on mains.
 6. **Model and load.** The defaults are for the UL model (15 A / 120 V). An EU unit (S4SW-001P16EU), a DC supply, or an inductive load without an RC snubber each change what the protection can do: see [Supply and loads](PROTECTION.md#supply-and-loads).
 7. **First boot on mains.** If you can watch the serial log, look for `Relay initialized on GPIO4`, `metering: AC present`, `protection: Mains nominal 120 V` and no `Fault raised` lines. See [Protection and Metering](PROTECTION.md) for what each fault means.
@@ -71,7 +71,7 @@ The 1PM firmware switches a metered 15 A load and has not run on hardware yet. I
 The 2PM builds (Outlet and Light) switch two channels. The 1.0.0 bring-up build ran on one 2PM (see the [Changelog](../CHANGELOG.md#shelly-2pm-gen4-outlet-and-light)) and had over-temperature protection only. 1.0.1 adds power metering and electrical protection per relay ([Protection and Metering](PROTECTION.md)); it has not run on hardware yet, so keep relying on the circuit breaker.
 
 1. **Hardware code.** Stock's `http://<device-ip>/rpc/Shelly.GetDeviceInfo` must report `"app":"S2PMG4"`. The package is built for that code; the web UI refuses it on anything else.
-2. **Slot.** The same call must report `"slot":1`. Install any stock update first if it reports 0 (see [Flash with the Shelly web UI](#flash-with-the-shelly-web-ui)). A web UI install from stock 2.0.1 has worked on a 1PM Gen4.
+2. **Slot.** The same call must report `"slot":1`. If it reports 0, install a stock update first and check again (see the slot note in [Flash with the Shelly web UI](#flash-with-the-shelly-web-ui)). A web UI install from stock 2.0.1 has worked on a 1PM Gen4.
 3. **Partition layout (an assumption).** The package writes the stock Gen4 layout taken from the 1 Gen4, 1PM and Mini. It has not been read from a 2PM's flash; the 2PM uses the same module and its stock firmware reports the same 896 KB file system. A UART backup first is the only way to keep the option to go back to stock.
 4. **No rollback on the first install.** A web UI install from stock can't fall back if the new firmware fails to start. The meter driver runs from the start, like the relays and inputs: every I2C operation times out after 50 ms, and a meter that doesn't answer only raises the meter-lost alert. The hardware snapshot starts after Matter is up and skips the boot after a crash restart. Later updates from the Wi-Fi mode page roll back on their own if the new firmware fails in its first 60 s.
 5. **Two separate loads, never a motor.** These are switch builds: each output is its own on/off switch, and nothing stops both being on at once. Don't install them on a 2PM wired to a roller shutter, blind or other motor with an up and a down wire (stock's "cover" profile): both directions on together can damage the motor. A cover build comes later.
@@ -96,7 +96,10 @@ The fastest way to install this firmware is the Shelly web UI, over your network
 3. Reconnect your laptop or phone to your home network. Find the Shelly's new IP address in your router's device list or the Shelly app.
 4. Open `http://<device-ip>` to reach the same web UI on your network. The slot check below needs this, and so does any stock update, which the Shelly downloads from the internet.
 
-> **Stock must be running from its second app slot.** The install only completes when the stock firmware is running from slot 1; from slot 0 it stops at about 87% and leaves the stock firmware in place, which is harmless. Open `http://<device-ip>/rpc/Shelly.GetDeviceInfo` and check `slot`. Factory units ship on slot 0: if yours reports 0, install any stock firmware update first (it moves stock to slot 1), then install this firmware.
+> [!IMPORTANT]
+> **Stock must be running from its second app slot.** Shelly's updater always writes new firmware into the app slot it is not running from, and this package's bootloader starts slot 0 (`app_0`), so the install only works when stock is running from slot 1. Open `http://<device-ip>/rpc/Shelly.GetDeviceInfo` and check `slot`. New units have shipped on slot 0, and every stock update switches the slot: if yours reports 0, install a stock update (the one offered, or the beta channel), confirm `slot` now reads 1, and install this firmware right away. If you upload from slot 0 the stock firmware stays in control: the installer either skips the app and the upload stalls, or reports success and the device restarts back into stock. Either way, install a stock update and try again. Whether such an attempt also writes Shelly's eFuse marker is not known (see [Reversibility](REVERSIBILITY.md)).
+>
+> This is based on how Shelly's updater and the ESP-IDF bootloader work, and on reports from related projects; nobody has yet uploaded this firmware from slot 0 to see which of the two happens.
 
 1. Download the web UI package for your device and variant, `automatous-io-{hardware}-{variant}-vX.Y.Z-ota.zip`, from the [latest release](../../../releases/latest). This is the `.zip`, not the `.bin`.
 2. Open the Shelly's web UI in a browser at its IP address on your network.
@@ -196,7 +199,7 @@ ESPConnect is a browser-based ESP32 flashing tool built on Web Serial. No instal
 2. Click **Download Flash Backup**.
 3. ESPConnect will read the entire flash and download it as a `.bin` file. This takes 5–10 minutes at 115200 baud. Do not disconnect or close the browser during the read.
 4. Rename the downloaded file to include the device's MAC address, e.g. `shelly-1-gen4-stock-AABBCCDDEEFF.bin`.
-5. **Verify the download against the chip.** ESPConnect can save the backup but has no built-in way to check that downloaded file against the chip (its integrity tool hashes the chip, not your saved file), so this step uses the command line. It is worth the detour. The backup is your only way back to stock, and verifying confirms the file is complete and matches the chip instead of assuming it. With the Shelly still in flash mode (disconnect ESPConnect first to free the serial port), run esptool's `verify_flash` against your saved file. A `verify OK (digest matched)` result means the backup is safe to keep; a `verify FAILED`, or fewer bytes checked than the chip's flash size, means redo it. The command, esptool setup, and how to read the output are in [Command line flashing with esptool](#command-line-flashing-with-esptool).
+5. **Verify the download against the chip.** ESPConnect can save the backup but has no built-in way to check that downloaded file against the chip (its integrity tool hashes the chip, not your saved file), so this step uses the command line. It is worth the detour. The backup is your only way back to stock, and verifying confirms the file is complete and matches the chip instead of assuming it. With the Shelly still in flash mode (disconnect ESPConnect first to free the serial port), run esptool's `verify-flash` against your saved file. A `Verification successful (digest matched).` result means the backup is safe to keep; a `Verification failed`, or fewer bytes checked than the chip's flash size, means redo it. The command, esptool setup, and how to read the output are in [Command line flashing with esptool](#command-line-flashing-with-esptool).
 6. Store the backup somewhere safe. If you are flashing multiple Shellies, keep each MAC-labeled backup separate. They should not be interchanged.
 
 ### 3. Flash the Automatous firmware
@@ -252,11 +255,11 @@ If you want to revert to the original Shelly firmware:
 
 ## Command line flashing with esptool
 
-Requires [esptool](https://github.com/espressif/esptool) installed. On macOS/Linux: `pip install esptool`. On Windows: install via pip, or download the standalone binary from the releases page.
+Requires [esptool](https://github.com/espressif/esptool) v5 or later installed (older versions name the commands `esptool.py` and `read_flash`, `write_flash` and so on, with underscores). On macOS/Linux: `pip install esptool`. On Windows: install via pip, or download the standalone binary from the releases page.
 
 Throughout these commands, replace:
 - `<PORT>` with your serial port (`/dev/cu.usbserial-XXXX` on macOS, `/dev/ttyUSB0` on Linux, `COM3` on Windows)
-- `<MAC>` with the Shelly's MAC address (read from `chip_id` below)
+- `<MAC>` with the Shelly's MAC address (read from `chip-id` below)
 - `<VERSION>` with the firmware release version (in the form `vX.Y.Z`)
 
 Put the Shelly into flash mode before running each command (GPIO0 bridged to GND, then power up via 3.3V).
@@ -265,35 +268,35 @@ Put the Shelly into flash mode before running each command (GPIO0 bridged to GND
 
 Device information that includes Mac Address:
 ```bash
-esptool.py --chip esp32c6 --port <PORT> --baud 115200 chip_id
+esptool --chip esp32c6 --port <PORT> --baud 115200 chip-id
 ```
 
 Backup your original firmware. `ALL` reads from offset `0x0` to the end of flash, so it captures the whole chip whatever its capacity, with no need to know or hardcode the size:
 
 ```bash
-esptool.py --chip esp32c6 --port <PORT> --baud 115200 \
-  read_flash 0x0 ALL shelly-1-gen4-stock-<MAC>.bin
+esptool --chip esp32c6 --port <PORT> --baud 115200 \
+  read-flash 0x0 ALL shelly-1-gen4-stock-<MAC>.bin
 ```
 
 Verify the backup against the chip:
 
 ```bash
-esptool.py --chip esp32c6 --port <PORT> --baud 115200 \
-  verify_flash 0x0 shelly-1-gen4-stock-<MAC>.bin
+esptool --chip esp32c6 --port <PORT> --baud 115200 \
+  verify-flash 0x0 shelly-1-gen4-stock-<MAC>.bin
 ```
 
-esptool's output gives you both checks at once. The connection banner reports the chip's flash size (`Features: ... Embedded Flash 8MB`), and the verify line reports how many bytes it checked against your file (`Verifying 0x800000 (8388608) bytes ...`). A complete intact backup shows the verified byte count matching the chip's flash size and ends in `-- verify OK (digest matched)`. A smaller byte count than the chip's flash means the file is truncated; a `verify FAILED` means it is corrupt. Redo the backup in either case. This works on any backup of this device, including one made in ESPConnect.
+esptool's output gives you both checks at once. The connection banner reports the chip's flash size (`Features: ... Embedded Flash 8MB`), and the verify line reports how many bytes it checked against your file (`Verifying 0x800000 (8388608) bytes ...`). A complete intact backup shows the verified byte count matching the chip's flash size and ends in `Verification successful (digest matched).`. A smaller byte count than the chip's flash means the file is truncated; a `Verification failed` means it is corrupt. Redo the backup in either case. This works on any backup of this device, including one made in ESPConnect.
 
 Erase flash:
 ```bash
-esptool.py --chip esp32c6 --port <PORT> --baud 115200 erase_flash
+esptool --chip esp32c6 --port <PORT> --baud 115200 erase-flash
 ```
 
 **Flash the Automatous firmware:**
 
 ```bash
-esptool.py --chip esp32c6 --port <PORT> --baud 115200 \
-  write_flash 0x0 automatous-io-shelly-1-gen4-light-<VERSION>.bin
+esptool --chip esp32c6 --port <PORT> --baud 115200 \
+  write-flash 0x0 automatous-io-shelly-1-gen4-light-<VERSION>.bin
 ```
 
 **Restore the original firmware:**
@@ -301,12 +304,12 @@ esptool.py --chip esp32c6 --port <PORT> --baud 115200 \
 Erase the chip, then write your saved backup:
 
 ```bash
-esptool.py --chip esp32c6 --port <PORT> --baud 115200 erase_flash
+esptool --chip esp32c6 --port <PORT> --baud 115200 erase-flash
 ```
 
 ```bash
-esptool.py --chip esp32c6 --port <PORT> --baud 115200 \
-  write_flash 0x0 shelly-1-gen4-stock-<MAC>.bin
+esptool --chip esp32c6 --port <PORT> --baud 115200 \
+  write-flash 0x0 shelly-1-gen4-stock-<MAC>.bin
 ```
 
 After flashing, remove the GPIO0–GND bridge and power-cycle the Shelly to boot the new firmware.

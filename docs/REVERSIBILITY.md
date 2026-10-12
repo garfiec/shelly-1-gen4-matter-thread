@@ -50,7 +50,7 @@ Reversibility depends on two things, not one. The first is the flash method, mea
 | UART | Yes, reads the chip before writing | Yes | Recoverable |
 | Web UI | No, write-only | No image exists | One-way |
 
-This is not purely a matter of UART being safe and OTA being unsafe. A UART user who takes only a partial backup, or who runs `erase_flash` without a complete image to restore, is in the same one-way situation as a web UI user. Completeness, not just method, is what protects you. The rule that actually keeps you safe is to capture a full 8MB backup before flashing, or to accept that the change may be permanent.
+This is not purely a matter of UART being safe and OTA being unsafe. A UART user who takes only a partial backup, or who runs `erase-flash` without a complete image to restore, is in the same one-way situation as a web UI user. Completeness, not just method, is what protects you. The rule that actually keeps you safe is to capture a full 8MB backup before flashing, or to accept that the change may be permanent.
 
 ---
 

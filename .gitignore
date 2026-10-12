@@ -46,6 +46,9 @@ idf_component_manager.yml
 # Captures of a stock Shelly (scripts/capture-shelly-webui.py): device-specific, include its Matter setup code
 shelly-capture-*
 
+# CI builds (scripts/ci-build.sh): the compiler cache
+.ccache/
+
 # Diagnostics builds (docs/BUILDING.md)
 build_diag/
 sdkconfig.diag

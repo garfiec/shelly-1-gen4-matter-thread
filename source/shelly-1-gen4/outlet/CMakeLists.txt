@@ -55,6 +55,9 @@ project(outlet)
 # stock (eFuse writes, secure boot, flash encryption, non-stock partitions).
 include(${CMAKE_CURRENT_LIST_DIR}/../../components/reversibility.cmake)
 
+# With -DSHELLY_WERROR=1 (CI), a warning in this repository's code fails the build.
+include(${CMAKE_CURRENT_LIST_DIR}/../../components/warnings.cmake)
+
 # WARNING: This is just an example for using key for decrypting the encrypted OTA image
 # Please do not use it as is.
 if(CONFIG_ENABLE_ENCRYPTED_OTA)

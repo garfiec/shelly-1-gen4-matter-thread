@@ -42,3 +42,4 @@ Other docs (`COMMISSIONING.md`, `FLASHING.md`, `UPDATING.md`, `PROTECTION.md`, `
 - **Hardware:** nothing is verified on hardware unless a doc says so. Don't claim untested behavior works.
 - **Build:** in the builder container, `idf.py -DSDKCONFIG_DEFAULTS=sdkconfig.defaults.c6_thread_shelly build` (see `docs/BUILDING.md`).
 - **Host tests:** `source/components/test_host/run.sh` needs only a host C compiler and python3.
+- **CI:** every push to `main` and every pull request runs the host tests, `scripts/check-web.sh` and a build of every product line in which a warning in this repository's code is an error (`SHELLY_WERROR=1 scripts/ci-build.sh <product line>`). Keep new code free of warnings.

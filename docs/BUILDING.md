@@ -16,6 +16,7 @@ Builds run in a dev container. Everything the build needs is installed in the im
 - [Build](#build)
 - [The Wi-Fi mode page](#the-wi-fi-mode-page)
 - [Build the release artifacts](#build-the-release-artifacts)
+- [Continuous integration](#continuous-integration)
 - [Flash your build](#flash-your-build)
 
 ---
@@ -264,6 +265,30 @@ python3 scripts/make-matter-ota.py source/shelly-1-gen4/light
 ```
 
 It calls `ota_image_tool.py` from the connectedhomeip checkout, found via `ESP_MATTER_PATH`. It has to run inside the container. It reads the vendor and product ID from the build's `sdkconfig` and the software version from `CHIPProjectConfig.h`; the image always matches the firmware it came from and can only target the device and variant it was built for. The output is `automatous-io-{hardware}-{variant}-vX.Y.Z.ota`. See [Updating](UPDATING.md) for how to serve it.
+
+---
+
+## Continuous integration
+
+Every push to `main` and every pull request runs [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+
+- **Host tests:** `source/components/test_host/run.sh`.
+- **Wi-Fi mode page:** `scripts/check-web.sh`, so a change under `web/` without a rebuilt `page.html.gz` fails.
+- **Firmware:** every product line, built in the builder image with `scripts/ci-build.sh`. A warning in this repository's code (`source/components/`, each device's `app/` and each product line's `main/`) fails the build; warnings in ESP-IDF, esp-matter and managed components don't. Each build's images are kept as a workflow artifact for 7 days.
+
+To build a product line the way CI does, run this inside the container from the repository root:
+
+```bash
+SHELLY_WERROR=1 scripts/ci-build.sh source/shelly-1-gen4/light
+```
+
+`SHELLY_WERROR=1` turns on `-Werror` for this repository's components (`source/components/warnings.cmake`). CMake keeps that setting in the product line's `build/` directory, so later builds there keep it too, until you delete `build/` or build once with `-DSHELLY_WERROR=0`.
+
+CI doesn't build the builder image each time. [`builder-image.yml`](../.github/workflows/builder-image.yml) builds it for amd64 and arm64 and pushes it to `ghcr.io/garfiec/shelly-gen4-builder`, tagged with a hash of the Dockerfile (`scripts/builder-image-tag.sh`). When the Dockerfile changes on `main`, CI builds the new image first; a pull request that changes it waits until a maintainer runs **Actions > Builder image**. You can pull the same image instead of building it:
+
+```bash
+docker pull ghcr.io/garfiec/shelly-gen4-builder:$(scripts/builder-image-tag.sh)
+```
 
 ---
 

@@ -1,0 +1,83 @@
+# Checks every push to main and every pull request: the host tests, the Wi-Fi
+# mode page, and a build of every product line with warnings in this
+# repository's code treated as errors. See docs/BUILDING.md#continuous-integration.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  host-tests:
+    name: Host tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # AddressSanitizer fails to start under the runner kernel's default
+      # mmap randomisation.
+      - run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - run: source/components/test_host/run.sh
+
+  web:
+    name: Wi-Fi mode page
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: source/components/shelly_maintenance/web/package-lock.json
+      - run: scripts/check-web.sh
+
+  image:
+    name: Builder image
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      exists: ${{ steps.tag.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: tag
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/shelly-gen4-builder:$(scripts/builder-image-tag.sh)"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            echo "::error::$image does not exist. The Dockerfile changed: a maintainer runs Actions > Builder image, then re-runs this check."
+            exit 1
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The Dockerfile changed on main: build its image first.
+  build-image:
+    needs: image
+    if: needs.image.outputs.exists == 'false'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/builder-image.yml
+
+  firmware:
+    needs: [image, build-image]
+    if: ${{ !cancelled() && needs.image.result == 'success' && needs.build-image.result != 'failure' }}
+    uses: ./.github/workflows/build-firmware.yml
+    with:
+      image: ${{ needs.image.outputs.image }}

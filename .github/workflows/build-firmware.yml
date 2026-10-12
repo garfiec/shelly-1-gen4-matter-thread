@@ -1,0 +1,102 @@
+# Builds every product line in the builder image. Called by ci.yml (every push
+# to main and every pull request).
+name: Build firmware
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Builder image, with its tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    name: ${{ matrix.project }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - shelly-1-gen4/light
+          - shelly-1-gen4/outlet
+          - shelly-1-gen4/opener
+          - shelly-1-gen4/light-switch
+          - shelly-1-mini-gen4/outlet
+          - shelly-1-mini-gen4/light-switch
+          - shelly-1pm-gen4/outlet
+          - shelly-2pm-gen4/outlet
+          - shelly-2pm-gen4/light
+    env:
+      # The builds bake in this path, so the checkout is mounted there.
+      WORKDIR: /workspaces/shelly-1-gen4-matter-thread
+      PROJECT: source/${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Name this build
+        id: name
+        run: echo "slug=${PROJECT#source/}" | tr / - >> "$GITHUB_OUTPUT"
+
+      - name: Free disk space
+        run: scripts/ci-free-disk.sh
+
+      - uses: actions/cache/restore@v6
+        with:
+          path: .ccache
+          key: ccache-${{ steps.name.outputs.slug }}-${{ github.sha }}
+          restore-keys: ccache-${{ steps.name.outputs.slug }}-
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the builder image
+        run: docker pull --quiet "${{ inputs.image }}"
+
+      - name: Build
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:$WORKDIR" -w "$WORKDIR" \
+            -e SHELLY_WERROR=1 \
+            -e CCACHE_DIR="$WORKDIR/.ccache" -e CCACHE_MAXSIZE=500M \
+            "${{ inputs.image }}" \
+            scripts/ci-build.sh "$PROJECT"
+
+      - name: Give the files back to the runner user
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+
+      - uses: actions/cache/save@v6
+        if: always() && github.event_name != 'pull_request'
+        with:
+          path: .ccache
+          key: ccache-${{ steps.name.outputs.slug }}-${{ github.sha }}
+
+      - name: Size
+        run: |
+          {
+            echo "### ${{ matrix.project }}"
+            sed 's/\x1b\[[0-9;]*m//g' "$PROJECT/build.log" | grep -E 'binary size|free\)' | tail -2 | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-${{ steps.name.outputs.slug }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ env.PROJECT }}/build/*.bin
+            ${{ env.PROJECT }}/build/*.elf
+            ${{ env.PROJECT }}/build/bootloader/bootloader.bin
+            ${{ env.PROJECT }}/build/partition_table/partition-table.bin
+            ${{ env.PROJECT }}/build/flasher_args.json
+            ${{ env.PROJECT }}/build/project_description.json
+            ${{ env.PROJECT }}/sdkconfig
